@@ -1,0 +1,29 @@
+# .gitignore
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VSCode
+.vscode/
+
+# Data
+stock-prediction/data/raw/
+stock-prediction/data/processed/
+
+# Node
+stock-prediction/frontend/node_modules/
+stock-prediction/frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+.env
