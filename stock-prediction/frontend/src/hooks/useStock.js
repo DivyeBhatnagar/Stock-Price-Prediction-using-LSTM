@@ -1,7 +1,7 @@
 // useStock.js  —  Custom React hook for fetching stock data
 
 import { useState, useCallback } from "react";
-import { fetchStockData, getPrediction, getMetrics, trainModel, getTrainingStatus } from "../utils/api";
+import { fetchStockData, getPrediction, getMetrics, trainModel, getTrainingStatus, refreshTicker } from "../utils/api";
 
 /**
  * Central hook that manages all stock-related state.
@@ -111,6 +111,25 @@ export function useStock() {
     setError(null);
   }, []);
 
+  // ── Refresh data for ticker ───────────────
+  const refreshStockData = useCallback(async (ticker) => {
+    setLoad("stock", true);
+    setError(null);
+    try {
+      // First trigger a live data refresh on the backend
+      await refreshTicker(ticker);
+      // Then reload the stock data
+      const data = await fetchStockData(ticker);
+      setStockData(data);
+      return data;
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message);
+      throw e;
+    } finally {
+      setLoad("stock", false);
+    }
+  }, []);
+
   return {
     stockData,
     prediction,
@@ -122,6 +141,7 @@ export function useStock() {
     loadPrediction,
     startTraining,
     pollTraining,
+    refreshStockData,
     reset,
   };
 }

@@ -12,6 +12,7 @@ import StockInfoBar     from "../components/StockInfoBar";
 import IndicatorChart   from "../components/IndicatorChart";
 import ForecastTable    from "../components/ForecastTable";
 import MarketInfoBar    from "../components/MarketInfoBar";
+import DataFreshnessBar from "../components/DataFreshnessBar";
 import { useStock }     from "../hooks/useStock";
 
 export default function Dashboard() {
@@ -81,6 +82,17 @@ export default function Dashboard() {
           onSearch={handleSearch}
           onTrain={handleTrain}
           loading={loading}
+        />
+
+        {/* Data freshness bar */}
+        <DataFreshnessBar
+          ticker={activeTicker}
+          onDataRefreshed={() => {
+            // Reload stock data when a manual refresh completes
+            if (activeTicker) {
+              loadStock(activeTicker).catch(() => {});
+            }
+          }}
         />
 
         {/* Error banner */}

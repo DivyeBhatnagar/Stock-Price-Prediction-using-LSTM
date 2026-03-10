@@ -22,6 +22,7 @@ import matplotlib
 matplotlib.use("Agg")   # Non-interactive backend for servers
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from threading import Lock
 
 # ─── project imports ─────────────────────────
 sys.path.insert(0, os.path.dirname(__file__))
@@ -30,6 +31,43 @@ from data_pipeline import (
     normalize_ticker, get_currency_symbol, DEFAULT_START_DATE,
 )
 from lstm_model import build_lstm_model, get_callbacks, save_model
+
+
+_ARTIFACT_CACHE: dict[str, dict] = {}
+_ARTIFACT_CACHE_LOCK = Lock()
+
+
+def _get_cached_forecast_artifacts(ticker: str, model_dir: str) -> tuple:
+    ticker_dir  = os.path.join(os.path.abspath(model_dir), ticker)
+    model_path  = os.path.join(ticker_dir, "model.keras")
+    scaler_path = os.path.join(ticker_dir, "scaler.pkl")
+    config_path = os.path.join(ticker_dir, "config.json")
+
+    mtimes = {
+        "model": os.path.getmtime(model_path),
+        "scaler": os.path.getmtime(scaler_path),
+        "config": os.path.getmtime(config_path),
+    }
+
+    with _ARTIFACT_CACHE_LOCK:
+        cached = _ARTIFACT_CACHE.get(ticker)
+        if cached and cached["mtimes"] == mtimes:
+            return cached["model"], cached["scaler"], cached["config"]
+
+        from lstm_model import load_model
+
+        model = load_model(model_path)
+        scaler = joblib.load(scaler_path)
+        with open(config_path) as f:
+            config = json.load(f)
+
+        _ARTIFACT_CACHE[ticker] = {
+            "mtimes": mtimes,
+            "model": model,
+            "scaler": scaler,
+            "config": config,
+        }
+        return model, scaler, config
 
 
 # ─────────────────────────────────────────────
@@ -311,22 +349,19 @@ def forecast_future(
         data_start = DEFAULT_START_DATE
 
     ticker_dir   = os.path.join(os.path.abspath(model_dir), ticker)
-    model_path   = os.path.join(ticker_dir, "model.keras")
     scaler_path  = os.path.join(ticker_dir, "scaler.pkl")
-    config_path  = os.path.join(ticker_dir, "config.json")
 
-    with open(config_path) as f:
-        config = json.load(f)
-
+    model, scaler, config = _get_cached_forecast_artifacts(ticker, model_dir)
     window = config["window_size"]
 
-    # Load artefacts
-    from lstm_model import load_model
-    model  = load_model(model_path)
-    scaler = joblib.load(scaler_path)
-
-    # Get latest data
-    df_raw  = fetch_stock_data(ticker, start=data_start)
+    # Try to load from local CSV first (fast path — avoids yfinance round-trip)
+    from data_pipeline import load_raw_data
+    try:
+        df_raw = load_raw_data(ticker)
+        print(f"[Forecast] Loaded local data for {ticker}: {len(df_raw)} rows")
+    except FileNotFoundError:
+        # Fallback: fetch from API only if no local data exists
+        df_raw = fetch_stock_data(ticker, start=data_start, incremental=False)
     df_feat = add_technical_indicators(df_raw)
     scaled, _ = normalize_data(df_feat, FEATURE_COLS, scaler_path)
 

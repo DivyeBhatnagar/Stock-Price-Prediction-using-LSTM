@@ -75,4 +75,45 @@ export const compareTickers = (tickers, nDays = 30) =>
 export const getMetrics = (ticker) =>
   api.get(`/api/metrics/${ticker}`).then((r) => r.data);
 
+// ─────────────────────────────────────────────
+// LIVE DATA PIPELINE
+// ─────────────────────────────────────────────
+
+export const getDataFreshness = () =>
+  api.get("/api/data/freshness").then((r) => r.data);
+
+export const getTickerFreshness = (ticker) =>
+  api.get(`/api/data/freshness/${ticker}`).then((r) => r.data);
+
+export const refreshData = (tickers = null, force = true) =>
+  api.post("/api/data/refresh", { tickers, force }).then((r) => r.data);
+
+export const refreshTicker = (ticker, force = true) =>
+  api.post(`/api/data/refresh/${ticker}?force=${force}`).then((r) => r.data);
+
+export const getWatchlist = () =>
+  api.get("/api/data/watchlist").then((r) => r.data);
+
+export const setWatchlist = (tickers) =>
+  api.put("/api/data/watchlist", { tickers }).then((r) => r.data);
+
+export const addToWatchlist = (tickers) =>
+  api.post("/api/data/watchlist/add", { tickers }).then((r) => r.data);
+
+export const removeFromWatchlist = (tickers) =>
+  api.post("/api/data/watchlist/remove", { tickers }).then((r) => r.data);
+
+// ─────────────────────────────────────────────
+// SCHEDULER
+// ─────────────────────────────────────────────
+
+export const getSchedulerStatus = () =>
+  api.get("/api/scheduler/status").then((r) => r.data);
+
+export const updateSchedulerConfig = (config) =>
+  api.put("/api/scheduler/config", config).then((r) => r.data);
+
+export const getSchedulerHistory = (limit = 20) =>
+  api.get("/api/scheduler/history", { params: { limit } }).then((r) => r.data);
+
 export default api;

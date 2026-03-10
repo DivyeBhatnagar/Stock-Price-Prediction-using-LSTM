@@ -44,7 +44,17 @@ log = logging.getLogger("stock-api")
 async def lifespan(app: FastAPI):
     log.info("🚀  Stock-Prediction API starting …")
     os.makedirs(MODEL_DIR, exist_ok=True)
+
+    # Start the background data scheduler
+    from scheduler import get_scheduler
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    sched = get_scheduler(data_dir)
+    sched.start()
+    log.info("📅  Data scheduler started.")
+
     yield
+
+    sched.stop()
     log.info("👋  API shutting down.")
 
 
@@ -178,12 +188,19 @@ def get_stock_data(
     Bare Indian symbols are auto-converted (e.g. RELIANCE → RELIANCE.NS).
     """
     try:
-        from data_pipeline import fetch_stock_data, add_technical_indicators, normalize_ticker, is_indian_ticker, get_currency, DEFAULT_START_DATE
+        from data_pipeline import fetch_stock_data, add_technical_indicators, load_raw_data, normalize_ticker, is_indian_ticker, get_currency, DEFAULT_START_DATE
         ticker = normalize_ticker(ticker)
         if start is None:
             start = DEFAULT_START_DATE
-        df = fetch_stock_data(ticker, start=start, end=end,
-                              save_dir=os.path.join(os.path.dirname(__file__), "..", "data", "raw"))
+
+        # Fast path: use local CSV if it exists (avoid yfinance round-trip)
+        data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+        try:
+            df = load_raw_data(ticker, data_dir=data_dir)
+        except FileNotFoundError:
+            df = fetch_stock_data(ticker, start=start, end=end,
+                                  save_dir=data_dir, incremental=False)
+
         if indicators:
             df = add_technical_indicators(df)
 
@@ -419,6 +436,160 @@ def market_info(ticker: str):
         info["timezone"]      = "America/New_York"
 
     return info
+
+
+# ─────────────────────────────────────────────
+# LIVE DATA PIPELINE ENDPOINTS
+# ─────────────────────────────────────────────
+
+class RefreshRequest(BaseModel):
+    tickers: Optional[List[str]] = Field(None, description="Specific tickers to refresh (None = all watched)")
+    force:   bool               = Field(True, description="Force refresh even if recently updated")
+
+class WatchlistRequest(BaseModel):
+    tickers: List[str] = Field(..., description="Tickers to set/add/remove")
+
+class ScheduleConfigRequest(BaseModel):
+    enabled:          Optional[bool] = None
+    mode:             Optional[str]  = Field(None, pattern="^(interval|cron)$")
+    interval_minutes: Optional[int]  = Field(None, ge=5, le=1440)
+    cron_hour:        Optional[str]  = None
+    cron_minute:      Optional[str]  = None
+    cron_day_of_week: Optional[str]  = None
+    auto_add_trained: Optional[bool] = None
+
+
+@app.get("/api/data/freshness", tags=["Live Data"])
+def data_freshness_summary():
+    """
+    Get a high-level summary of data freshness across all tickers:
+    how many are stale, how many are fresh, total rows, watchlist.
+    """
+    from live_data_manager import get_manager
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    mgr = get_manager(data_dir)
+    return mgr.get_summary()
+
+
+@app.get("/api/data/freshness/{ticker}", tags=["Live Data"])
+def data_freshness_ticker(ticker: str):
+    """Get freshness info for a specific ticker."""
+    from live_data_manager import get_manager
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    mgr = get_manager(data_dir)
+    ticker = _normalize(ticker)
+    return {"ticker": ticker, **mgr.get_freshness(ticker)}
+
+
+@app.post("/api/data/refresh", tags=["Live Data"])
+def manual_refresh(req: RefreshRequest, background_tasks: BackgroundTasks):
+    """
+    Manually trigger a data refresh.
+    Runs in the background if many tickers; returns immediately.
+    """
+    from scheduler import get_scheduler
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    sched = get_scheduler(data_dir)
+
+    tickers = [_normalize(t) for t in req.tickers] if req.tickers else None
+
+    # For single ticker, do it synchronously for immediate feedback
+    if tickers and len(tickers) == 1:
+        result = sched.manager.refresh_ticker(tickers[0], force=req.force)
+        return {"mode": "sync", "result": result}
+
+    # For multiple tickers, run in background
+    background_tasks.add_task(sched.trigger_now, tickers)
+    return {
+        "mode":    "background",
+        "message": f"Refresh started for {len(tickers) if tickers else 'all watched'} tickers",
+        "poll":    "/api/data/freshness",
+    }
+
+
+@app.post("/api/data/refresh/{ticker}", tags=["Live Data"])
+def refresh_single_ticker(ticker: str, force: bool = Query(True)):
+    """
+    Refresh data for a single ticker synchronously.
+    Returns the updated freshness info.
+    """
+    from live_data_manager import get_manager
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    mgr = get_manager(data_dir)
+    ticker = _normalize(ticker)
+    result = mgr.refresh_ticker(ticker, force=force)
+    return result
+
+
+@app.get("/api/data/watchlist", tags=["Live Data"])
+def get_watchlist():
+    """Get the current auto-refresh watchlist."""
+    from live_data_manager import get_manager
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    mgr = get_manager(data_dir)
+    return {"watchlist": mgr.get_watchlist()}
+
+
+@app.put("/api/data/watchlist", tags=["Live Data"])
+def set_watchlist(req: WatchlistRequest):
+    """Replace the entire watchlist."""
+    from live_data_manager import get_manager
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    mgr = get_manager(data_dir)
+    tickers = mgr.set_watchlist(req.tickers)
+    return {"watchlist": tickers}
+
+
+@app.post("/api/data/watchlist/add", tags=["Live Data"])
+def add_to_watchlist(req: WatchlistRequest):
+    """Add tickers to the watchlist."""
+    from live_data_manager import get_manager
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    mgr = get_manager(data_dir)
+    for t in req.tickers:
+        mgr.add_to_watchlist(t)
+    return {"watchlist": mgr.get_watchlist()}
+
+
+@app.post("/api/data/watchlist/remove", tags=["Live Data"])
+def remove_from_watchlist(req: WatchlistRequest):
+    """Remove tickers from the watchlist."""
+    from live_data_manager import get_manager
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    mgr = get_manager(data_dir)
+    for t in req.tickers:
+        mgr.remove_from_watchlist(t)
+    return {"watchlist": mgr.get_watchlist()}
+
+
+@app.get("/api/scheduler/status", tags=["Scheduler"])
+def scheduler_status():
+    """Get the current scheduler status, config, and next scheduled run."""
+    from scheduler import get_scheduler
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    sched = get_scheduler(data_dir)
+    return sched.get_status()
+
+
+@app.put("/api/scheduler/config", tags=["Scheduler"])
+def update_scheduler_config(req: ScheduleConfigRequest):
+    """Update scheduler configuration and restart with new settings."""
+    from scheduler import get_scheduler
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    sched = get_scheduler(data_dir)
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No config fields provided")
+    return sched.reschedule(**updates)
+
+
+@app.get("/api/scheduler/history", tags=["Scheduler"])
+def scheduler_history(limit: int = Query(20, ge=1, le=100)):
+    """Get recent scheduler run history."""
+    from scheduler import get_scheduler
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+    sched = get_scheduler(data_dir)
+    return {"history": sched.get_history(limit)}
 
 
 # ─────────────────────────────────────────────

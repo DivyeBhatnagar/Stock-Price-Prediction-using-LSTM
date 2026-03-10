@@ -127,17 +127,23 @@ def fetch_stock_data(
     ticker: str,
     start: str = None,
     end: Optional[str] = None,
-    save_dir: str = "../data/raw"
+    save_dir: str = "../data/raw",
+    incremental: bool = True,
 ) -> pd.DataFrame:
     """
     Download historical OHLCV data from Yahoo Finance.
 
+    When ``incremental=True`` (default), uses LiveDataManager to perform
+    smart incremental updates — only fetching missing days rather than
+    re-downloading the entire history each time.
+
     Parameters
     ----------
-    ticker   : Stock symbol — bare Indian names auto-converted (e.g. "RELIANCE" → "RELIANCE.NS")
-    start    : Start date "YYYY-MM-DD"; defaults to 20 years ago
-    end      : End date string; defaults to today
-    save_dir : Directory to cache raw CSV
+    ticker      : Stock symbol — bare Indian names auto-converted (e.g. "RELIANCE" → "RELIANCE.NS")
+    start       : Start date "YYYY-MM-DD"; defaults to 20 years ago
+    end         : End date string; defaults to today
+    save_dir    : Directory to cache raw CSV
+    incremental : Use LiveDataManager for smart incremental updates (default True)
 
     Returns
     -------
@@ -147,6 +153,28 @@ def fetch_stock_data(
     if start is None:
         start = DEFAULT_START_DATE
 
+    # ── Incremental path (preferred) ─────────────
+    if incremental:
+        try:
+            from live_data_manager import get_manager
+            mgr = get_manager(os.path.abspath(save_dir))
+            result = mgr.refresh_ticker(ticker, force=False, full_history_start=start)
+
+            # Load the updated CSV
+            safe_name = ticker.replace("^", "_IDX_")
+            path = os.path.join(save_dir, f"{safe_name}.csv")
+            if os.path.exists(path):
+                df = pd.read_csv(path, index_col=0, parse_dates=True)
+                if not df.empty:
+                    action = result.get("action", "unknown")
+                    print(f"[DataPipeline] '{ticker}' via LiveDataManager ({action}): "
+                          f"{len(df)} rows, latest={df.index.max().date()}")
+                    return df
+        except Exception as e:
+            print(f"[DataPipeline] LiveDataManager fallback for '{ticker}': {e}")
+            # Fall through to legacy path
+
+    # ── Legacy full-download path ────────────────
     print(f"[DataPipeline] Fetching '{ticker}' from {start} …")
     df = yf.download(ticker, start=start, end=end, progress=False)
 
