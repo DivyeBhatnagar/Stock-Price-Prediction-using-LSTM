@@ -5,15 +5,13 @@ import Dashboard from "./pages/Dashboard";
 
 export default function App() {
   return (
-    <div className="dark">
-      <BrowserRouter>
-        <div className="min-h-screen bg-surface">
-          <Navbar />
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-          </Routes>
-        </div>
-      </BrowserRouter>
-    </div>
+    <BrowserRouter>
+      <div className="min-h-screen bg-surface">
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+        </Routes>
+      </div>
+    </BrowserRouter>
   );
 }
