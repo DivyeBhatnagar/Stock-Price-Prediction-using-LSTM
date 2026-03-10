@@ -44,6 +44,7 @@ INDIAN_STOCKS = {
     "HCLTECH":    {"name": "HCL Technologies",         "sector": "IT Services"},
     "MARUTI":     {"name": "Maruti Suzuki",            "sector": "Automobile"},
     "TATAMOTORS": {"name": "Tata Motors",              "sector": "Automobile"},
+    "TATAMOTOR":  {"name": "Tata Motors",              "sector": "Automobile"},
     "TATASTEEL":  {"name": "Tata Steel",               "sector": "Metals"},
     "SUNPHARMA":  {"name": "Sun Pharma",               "sector": "Pharma"},
     "BAJFINANCE": {"name": "Bajaj Finance",            "sector": "Finance"},
@@ -152,6 +153,11 @@ def fetch_stock_data(
     if df.empty:
         raise ValueError(f"No data returned for ticker '{ticker}'. "
                          "Check the symbol or date range.")
+
+    # yfinance ≥0.2 returns MultiIndex columns like ('Open', 'RELIANCE.NS')
+    # Flatten them to simple column names: 'Open', 'High', …
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
     # Keep only OHLCV columns
     df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
