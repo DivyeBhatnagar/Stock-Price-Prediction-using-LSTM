@@ -27,40 +27,69 @@ import joblib
 # INDIAN MARKET CONSTANTS
 # ─────────────────────────────────────────────
 
-INDIAN_STOCKS = {
-    # symbol (bare) → { name, sector }
-    "RELIANCE":   {"name": "Reliance Industries",     "sector": "Energy / Conglomerate"},
-    "TCS":        {"name": "Tata Consultancy Services","sector": "IT Services"},
-    "INFY":       {"name": "Infosys",                  "sector": "IT Services"},
-    "HDFCBANK":   {"name": "HDFC Bank",                "sector": "Banking"},
-    "ICICIBANK":  {"name": "ICICI Bank",               "sector": "Banking"},
-    "SBIN":       {"name": "State Bank of India",      "sector": "Banking"},
-    "ITC":        {"name": "ITC Limited",              "sector": "FMCG"},
-    "LT":         {"name": "Larsen & Toubro",          "sector": "Infrastructure"},
-    "BHARTIARTL": {"name": "Bharti Airtel",            "sector": "Telecom"},
-    "AXISBANK":   {"name": "Axis Bank",                "sector": "Banking"},
-    "KOTAKBANK":  {"name": "Kotak Mahindra Bank",      "sector": "Banking"},
-    "WIPRO":      {"name": "Wipro",                    "sector": "IT Services"},
-    "HCLTECH":    {"name": "HCL Technologies",         "sector": "IT Services"},
-    "MARUTI":     {"name": "Maruti Suzuki",            "sector": "Automobile"},
-    "TATAMOTORS": {"name": "Tata Motors",              "sector": "Automobile"},
-    "TATAMOTOR":  {"name": "Tata Motors",              "sector": "Automobile"},
-    "TATASTEEL":  {"name": "Tata Steel",               "sector": "Metals"},
-    "SUNPHARMA":  {"name": "Sun Pharma",               "sector": "Pharma"},
-    "BAJFINANCE": {"name": "Bajaj Finance",            "sector": "Finance"},
-    "ADANIENT":   {"name": "Adani Enterprises",        "sector": "Conglomerate"},
-    "POWERGRID":  {"name": "Power Grid Corp.",         "sector": "Power / Utilities"},
-    "NTPC":       {"name": "NTPC Limited",             "sector": "Power / Utilities"},
-    "ONGC":       {"name": "ONGC",                     "sector": "Energy"},
-    "ULTRACEMCO": {"name": "UltraTech Cement",         "sector": "Cement"},
-    "TITAN":      {"name": "Titan Company",            "sector": "Consumer Goods"},
-    "ASIANPAINT": {"name": "Asian Paints",             "sector": "Paints / Consumer"},
-    "HINDUNILVR": {"name": "Hindustan Unilever",       "sector": "FMCG"},
-    "BAJAJFINSV": {"name": "Bajaj Finserv",            "sector": "Finance"},
-    "TECHM":      {"name": "Tech Mahindra",            "sector": "IT Services"},
-    "JSWSTEEL":   {"name": "JSW Steel",                "sector": "Metals"},
-    "DRREDDY":    {"name": "Dr. Reddy's Labs",         "sector": "Pharma"},
+# ─────────────────────────────────────────────
+# NIFTY 50 UNIVERSE  (all 50 NSE large-caps)
+# ─────────────────────────────────────────────
+
+NIFTY50_STOCKS = {
+    # bare symbol → { name, sector }   (Yahoo Finance: append .NS for each)
+    "ADANIENT":   {"name": "Adani Enterprises",              "sector": "Metals & Mining"},
+    "ADANIPORTS": {"name": "Adani Ports and SEZ",            "sector": "Infrastructure"},
+    "APOLLOHOSP": {"name": "Apollo Hospitals",               "sector": "Healthcare"},
+    "ASIANPAINT": {"name": "Asian Paints",                   "sector": "Paints / Consumer"},
+    "AXISBANK":   {"name": "Axis Bank",                      "sector": "Banking"},
+    "BAJAJ-AUTO": {"name": "Bajaj Auto",                     "sector": "Automobile"},
+    "BAJFINANCE": {"name": "Bajaj Finance",                  "sector": "Finance / NBFC"},
+    "BAJAJFINSV": {"name": "Bajaj Finserv",                  "sector": "Finance / Insurance"},
+    "BHARTIARTL": {"name": "Bharti Airtel",                  "sector": "Telecom"},
+    "BRITANNIA":  {"name": "Britannia Industries",           "sector": "FMCG"},
+    "CIPLA":      {"name": "Cipla",                          "sector": "Pharma"},
+    "COALINDIA":  {"name": "Coal India",                     "sector": "Energy / Mining"},
+    "DIVISLAB":   {"name": "Divi's Laboratories",            "sector": "Pharma"},
+    "DRREDDY":    {"name": "Dr. Reddy's Laboratories",       "sector": "Pharma"},
+    "EICHERMOT":  {"name": "Eicher Motors",                  "sector": "Automobile"},
+    "GRASIM":     {"name": "Grasim Industries",              "sector": "Cement / Diversified"},
+    "HCLTECH":    {"name": "HCL Technologies",               "sector": "IT Services"},
+    "HDFCBANK":   {"name": "HDFC Bank",                      "sector": "Banking"},
+    "HDFCLIFE":   {"name": "HDFC Life Insurance",            "sector": "Insurance"},
+    "HEROMOTOCO": {"name": "Hero MotoCorp",                  "sector": "Automobile"},
+    "HINDALCO":   {"name": "Hindalco Industries",            "sector": "Metals / Aluminium"},
+    "HINDUNILVR": {"name": "Hindustan Unilever",             "sector": "FMCG"},
+    "ICICIBANK":  {"name": "ICICI Bank",                     "sector": "Banking"},
+    "ITC":        {"name": "ITC",                            "sector": "FMCG / Conglomerate"},
+    "INDUSINDBK": {"name": "IndusInd Bank",                  "sector": "Banking"},
+    "INFY":       {"name": "Infosys",                        "sector": "IT Services"},
+    "JSWSTEEL":   {"name": "JSW Steel",                      "sector": "Metals / Steel"},
+    "KOTAKBANK":  {"name": "Kotak Mahindra Bank",            "sector": "Banking"},
+    "LT":         {"name": "Larsen & Toubro",                "sector": "Infrastructure"},
+    "LTIM":       {"name": "LTIMindtree",                    "sector": "IT Services"},
+    "M&M":        {"name": "Mahindra & Mahindra",            "sector": "Automobile"},
+    "MARUTI":     {"name": "Maruti Suzuki",                  "sector": "Automobile"},
+    "NESTLEIND":  {"name": "Nestle India",                   "sector": "FMCG"},
+    "NTPC":       {"name": "NTPC",                           "sector": "Power / Utilities"},
+    "ONGC":       {"name": "ONGC",                           "sector": "Energy / Oil & Gas"},
+    "POWERGRID":  {"name": "Power Grid Corporation",         "sector": "Power / Utilities"},
+    "RELIANCE":   {"name": "Reliance Industries",            "sector": "Energy / Conglomerate"},
+    "SBILIFE":    {"name": "SBI Life Insurance",             "sector": "Insurance"},
+    "SHRIRAMFIN": {"name": "Shriram Finance",                "sector": "Finance / NBFC"},
+    "SBIN":       {"name": "State Bank of India",            "sector": "Banking"},
+    "SUNPHARMA":  {"name": "Sun Pharmaceutical Industries",  "sector": "Pharma"},
+    "TCS":        {"name": "Tata Consultancy Services",      "sector": "IT Services"},
+    "TATACONSUM": {"name": "Tata Consumer Products",         "sector": "FMCG"},
+    "TATAMOTORS": {"name": "Tata Motors",                    "sector": "Automobile"},
+    "TATASTEEL":  {"name": "Tata Steel",                     "sector": "Metals / Steel"},
+    "TECHM":      {"name": "Tech Mahindra",                  "sector": "IT Services"},
+    "TITAN":      {"name": "Titan Company",                  "sector": "Consumer Goods"},
+    "ULTRACEMCO": {"name": "UltraTech Cement",               "sector": "Cement"},
+    "WIPRO":      {"name": "Wipro",                          "sector": "IT Services"},
+    "BPCL":       {"name": "Bharat Petroleum",               "sector": "Energy / Oil & Gas"},
 }
+
+# Backward-compatible alias
+INDIAN_STOCKS = NIFTY50_STOCKS
+
+# Ordered list of all 50 NSE tickers in Yahoo Finance format
+NIFTY50_TICKERS = [f"{bare}.NS" for bare in NIFTY50_STOCKS.keys()]
 
 INDIAN_INDICES = {
     "^NSEI":     {"name": "NIFTY 50",    "description": "NSE benchmark (50 large-caps)"},
@@ -68,11 +97,11 @@ INDIAN_INDICES = {
     "^BSESN":    {"name": "SENSEX",      "description": "BSE benchmark (30 stocks)"},
 }
 
-# Build a set of bare Indian ticker names for fast lookup
-_INDIAN_BARE_SET = set(INDIAN_STOCKS.keys())
+# Build a set of bare NIFTY 50 ticker names for fast lookup
+_INDIAN_BARE_SET = set(NIFTY50_STOCKS.keys())
 
-# Default: 20 years of historical data
-DEFAULT_START_DATE = (datetime.now() - timedelta(days=20 * 365)).strftime("%Y-%m-%d")
+# Default: 10 years of historical data for NIFTY 50
+DEFAULT_START_DATE = (datetime.now() - timedelta(days=10 * 365)).strftime("%Y-%m-%d")
 
 
 # ─────────────────────────────────────────────
@@ -127,7 +156,7 @@ def fetch_stock_data(
     ticker: str,
     start: str = None,
     end: Optional[str] = None,
-    save_dir: str = "../data/raw",
+    save_dir: str = "../data/stocks",
     incremental: bool = True,
 ) -> pd.DataFrame:
     """
@@ -161,7 +190,7 @@ def fetch_stock_data(
             result = mgr.refresh_ticker(ticker, force=False, full_history_start=start)
 
             # Load the updated CSV
-            safe_name = ticker.replace("^", "_IDX_")
+            safe_name = ticker.replace("^", "_IDX_").replace("&", "_AND_")
             path = os.path.join(save_dir, f"{safe_name}.csv")
             if os.path.exists(path):
                 df = pd.read_csv(path, index_col=0, parse_dates=True)
@@ -193,17 +222,17 @@ def fetch_stock_data(
 
     # Persist raw data
     os.makedirs(save_dir, exist_ok=True)
-    safe_name = ticker.replace("^", "_IDX_")   # Handle index symbols in filenames
+    safe_name = ticker.replace("^", "_IDX_").replace("&", "_AND_")   # Safe filenames
     path = os.path.join(save_dir, f"{safe_name}.csv")
     df.to_csv(path)
     print(f"[DataPipeline] Saved raw data → {path}  ({len(df)} rows)")
     return df
 
 
-def load_raw_data(ticker: str, data_dir: str = "../data/raw") -> pd.DataFrame:
+def load_raw_data(ticker: str, data_dir: str = "../data/stocks") -> pd.DataFrame:
     """Load previously cached raw CSV for a ticker."""
     ticker = normalize_ticker(ticker)
-    safe_name = ticker.replace("^", "_IDX_")
+    safe_name = ticker.replace("^", "_IDX_").replace("&", "_AND_")
     path = os.path.join(data_dir, f"{safe_name}.csv")
     if not os.path.exists(path):
         raise FileNotFoundError(f"No cached data for {ticker}. "

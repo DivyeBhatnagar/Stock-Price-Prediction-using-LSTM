@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 # ─── project imports ─────────────────────────
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
+DATA_DIR  = os.path.join(os.path.dirname(__file__), "..", "data", "stocks")  # NIFTY 50 stock data
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "model"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -47,8 +48,7 @@ async def lifespan(app: FastAPI):
 
     # Start the background data scheduler
     from scheduler import get_scheduler
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    sched = get_scheduler(data_dir)
+    sched = get_scheduler(DATA_DIR)
     sched.start()
     log.info("📅  Data scheduler started.")
 
@@ -63,9 +63,9 @@ async def lifespan(app: FastAPI):
 # ─────────────────────────────────────────────
 
 app = FastAPI(
-    title       = "Stock Price Prediction API",
-    description = "LSTM-based stock price forecasting — supports US & Indian (NSE/BSE) markets",
-    version     = "2.0.0",
+    title       = "NIFTY 50 Stock Prediction API",
+    description = "LSTM-based stock price forecasting for all 50 NIFTY companies (NSE India) — 10 years of historical data",
+    version     = "3.0.0",
     lifespan    = lifespan,
 )
 
@@ -194,9 +194,8 @@ def get_stock_data(
             start = DEFAULT_START_DATE
 
         # Fast path: use local CSV if it exists (avoid yfinance round-trip)
-        data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
         try:
-            df = load_raw_data(ticker, data_dir=data_dir)
+            df = load_raw_data(ticker, data_dir=DATA_DIR)
         except FileNotFoundError:
             df = fetch_stock_data(ticker, start=start, end=end,
                                   save_dir=data_dir, incremental=False)
@@ -365,10 +364,10 @@ def compare_tickers(
 @app.get("/api/india/tickers", tags=["Indian Market"])
 def india_tickers():
     """
-    Return curated list of popular Indian NSE stocks and indices
+    Return the complete NIFTY 50 universe — all 50 NSE large-cap stocks
     with metadata (name, sector, Yahoo Finance symbol).
     """
-    from data_pipeline import INDIAN_STOCKS, INDIAN_INDICES
+    from data_pipeline import NIFTY50_STOCKS, INDIAN_INDICES
 
     stocks = [
         {
@@ -378,7 +377,7 @@ def india_tickers():
             "sector":   info["sector"],
             "exchange": "NSE",
         }
-        for bare, info in INDIAN_STOCKS.items()
+        for bare, info in NIFTY50_STOCKS.items()
     ]
 
     indices = [
@@ -394,8 +393,7 @@ def india_tickers():
         "stocks":  stocks,
         "indices": indices,
         "count":   len(stocks),
-        "note":    "All symbols use Yahoo Finance format. "
-                   "NSE stocks end with .NS, BSE with .BO.",
+        "note":    "NIFTY 50 universe only. All symbols use Yahoo Finance NSE format (.NS).",
     }
 
 
@@ -466,8 +464,7 @@ def data_freshness_summary():
     how many are stale, how many are fresh, total rows, watchlist.
     """
     from live_data_manager import get_manager
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    mgr = get_manager(data_dir)
+    mgr = get_manager(DATA_DIR)
     return mgr.get_summary()
 
 
@@ -475,8 +472,7 @@ def data_freshness_summary():
 def data_freshness_ticker(ticker: str):
     """Get freshness info for a specific ticker."""
     from live_data_manager import get_manager
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    mgr = get_manager(data_dir)
+    mgr = get_manager(DATA_DIR)
     ticker = _normalize(ticker)
     return {"ticker": ticker, **mgr.get_freshness(ticker)}
 
@@ -488,8 +484,7 @@ def manual_refresh(req: RefreshRequest, background_tasks: BackgroundTasks):
     Runs in the background if many tickers; returns immediately.
     """
     from scheduler import get_scheduler
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    sched = get_scheduler(data_dir)
+    sched = get_scheduler(DATA_DIR)
 
     tickers = [_normalize(t) for t in req.tickers] if req.tickers else None
 
@@ -514,8 +509,7 @@ def refresh_single_ticker(ticker: str, force: bool = Query(True)):
     Returns the updated freshness info.
     """
     from live_data_manager import get_manager
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    mgr = get_manager(data_dir)
+    mgr = get_manager(DATA_DIR)
     ticker = _normalize(ticker)
     result = mgr.refresh_ticker(ticker, force=force)
     return result
@@ -525,8 +519,7 @@ def refresh_single_ticker(ticker: str, force: bool = Query(True)):
 def get_watchlist():
     """Get the current auto-refresh watchlist."""
     from live_data_manager import get_manager
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    mgr = get_manager(data_dir)
+    mgr = get_manager(DATA_DIR)
     return {"watchlist": mgr.get_watchlist()}
 
 
@@ -534,8 +527,7 @@ def get_watchlist():
 def set_watchlist(req: WatchlistRequest):
     """Replace the entire watchlist."""
     from live_data_manager import get_manager
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    mgr = get_manager(data_dir)
+    mgr = get_manager(DATA_DIR)
     tickers = mgr.set_watchlist(req.tickers)
     return {"watchlist": tickers}
 
@@ -544,8 +536,7 @@ def set_watchlist(req: WatchlistRequest):
 def add_to_watchlist(req: WatchlistRequest):
     """Add tickers to the watchlist."""
     from live_data_manager import get_manager
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    mgr = get_manager(data_dir)
+    mgr = get_manager(DATA_DIR)
     for t in req.tickers:
         mgr.add_to_watchlist(t)
     return {"watchlist": mgr.get_watchlist()}
@@ -555,8 +546,7 @@ def add_to_watchlist(req: WatchlistRequest):
 def remove_from_watchlist(req: WatchlistRequest):
     """Remove tickers from the watchlist."""
     from live_data_manager import get_manager
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    mgr = get_manager(data_dir)
+    mgr = get_manager(DATA_DIR)
     for t in req.tickers:
         mgr.remove_from_watchlist(t)
     return {"watchlist": mgr.get_watchlist()}
@@ -566,8 +556,7 @@ def remove_from_watchlist(req: WatchlistRequest):
 def scheduler_status():
     """Get the current scheduler status, config, and next scheduled run."""
     from scheduler import get_scheduler
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    sched = get_scheduler(data_dir)
+    sched = get_scheduler(DATA_DIR)
     return sched.get_status()
 
 
@@ -575,8 +564,7 @@ def scheduler_status():
 def update_scheduler_config(req: ScheduleConfigRequest):
     """Update scheduler configuration and restart with new settings."""
     from scheduler import get_scheduler
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    sched = get_scheduler(data_dir)
+    sched = get_scheduler(DATA_DIR)
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No config fields provided")
@@ -587,8 +575,7 @@ def update_scheduler_config(req: ScheduleConfigRequest):
 def scheduler_history(limit: int = Query(20, ge=1, le=100)):
     """Get recent scheduler run history."""
     from scheduler import get_scheduler
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
-    sched = get_scheduler(data_dir)
+    sched = get_scheduler(DATA_DIR)
     return {"history": sched.get_history(limit)}
 
 
