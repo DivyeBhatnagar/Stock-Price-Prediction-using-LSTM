@@ -33,7 +33,6 @@ const NIFTY50 = [
   { symbol: "COALINDIA.NS",  label: "Coal India",        sector: "Energy" },
   // Automobile
   { symbol: "MARUTI.NS",     label: "Maruti Suzuki",     sector: "Auto" },
-  { symbol: "TATAMOTORS.NS", label: "Tata Motors",       sector: "Auto" },
   { symbol: "BAJAJ-AUTO.NS", label: "Bajaj Auto",        sector: "Auto" },
   { symbol: "HEROMOTOCO.NS", label: "Hero MotoCorp",     sector: "Auto" },
   { symbol: "EICHERMOT.NS",  label: "Eicher Motors",     sector: "Auto" },

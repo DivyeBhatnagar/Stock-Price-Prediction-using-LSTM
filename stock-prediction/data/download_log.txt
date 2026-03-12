@@ -1,0 +1,26 @@
+2026-03-12 22:09:12,690  INFO        ⬇  TATAMOTORS.NS         downloading from 2016-03-14 …
+2026-03-12 22:09:15,436  ERROR     HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: TATAMOTORS.NS"}}}
+2026-03-12 22:09:15,713  ERROR     $TATAMOTORS.NS: possibly delisted; no timezone found
+2026-03-12 22:09:15,714  ERROR     
+1 Failed download:
+2026-03-12 22:09:15,714  ERROR     ['TATAMOTORS.NS']: possibly delisted; no timezone found
+2026-03-12 22:09:15,716  WARNING     ⚠️  TATAMOTORS.NS         no data from 2016-03-14, retrying with full history …
+2026-03-12 22:09:16,594  ERROR     HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: TATAMOTORS.NS"}}}
+2026-03-12 22:09:16,920  ERROR     $TATAMOTORS.NS: possibly delisted; no timezone found
+2026-03-12 22:09:16,930  ERROR     
+1 Failed download:
+2026-03-12 22:09:16,931  ERROR     ['TATAMOTORS.NS']: possibly delisted; no timezone found
+2026-03-12 22:09:16,934  WARNING     ⚠️  TATAMOTORS.NS         Yahoo Finance failed, switching to NSE website …
+2026-03-12 22:09:16,934  INFO        🌐  TATAMOTORS.NS         trying NSE official website …
+2026-03-12 22:09:19,588  WARNING         chunk 14-03-2016→13-03-2017 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=14-03-2016&to=13-03-2017
+2026-03-12 22:09:19,755  WARNING         chunk 14-03-2017→13-03-2018 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=14-03-2017&to=13-03-2018
+2026-03-12 22:09:20,268  WARNING         chunk 14-03-2018→13-03-2019 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=14-03-2018&to=13-03-2019
+2026-03-12 22:09:20,574  WARNING         chunk 14-03-2019→12-03-2020 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=14-03-2019&to=12-03-2020
+2026-03-12 22:09:20,919  WARNING         chunk 13-03-2020→12-03-2021 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=13-03-2020&to=12-03-2021
+2026-03-12 22:09:21,292  WARNING         chunk 13-03-2021→12-03-2022 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=13-03-2021&to=12-03-2022
+2026-03-12 22:09:21,458  WARNING         chunk 13-03-2022→12-03-2023 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=13-03-2022&to=12-03-2023
+2026-03-12 22:09:21,669  WARNING         chunk 13-03-2023→11-03-2024 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=13-03-2023&to=11-03-2024
+2026-03-12 22:09:21,828  WARNING         chunk 12-03-2024→11-03-2025 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=12-03-2024&to=11-03-2025
+2026-03-12 22:09:22,008  WARNING         chunk 12-03-2025→11-03-2026 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=12-03-2025&to=11-03-2026
+2026-03-12 22:09:22,414  WARNING         chunk 12-03-2026→12-03-2026 failed: 404 Client Error: Not Found for url: https://www.nseindia.com/api/historical/cm/equity?symbol=TATAMOTORS&series=%5B%22EQ%22%5D&from=12-03-2026&to=12-03-2026
+2026-03-12 22:09:22,417  ERROR       ❌  TATAMOTORS.NS         FAILED: No data returned from Yahoo Finance or NSE website

@@ -23,7 +23,7 @@ import logging
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -52,8 +52,16 @@ async def lifespan(app: FastAPI):
     sched.start()
     log.info("📅  Data scheduler started.")
 
+    # Start the WebSocket live-price publisher
+    from ws_manager import get_ws_manager
+    from ws_publisher import get_publisher
+    publisher = get_publisher(get_ws_manager(), model_dir=MODEL_DIR)
+    publisher.start()
+    log.info("📡  WebSocket publisher started.")
+
     yield
 
+    publisher.stop()
     sched.stop()
     log.info("👋  API shutting down.")
 
@@ -577,6 +585,54 @@ def scheduler_history(limit: int = Query(20, ge=1, le=100)):
     from scheduler import get_scheduler
     sched = get_scheduler(DATA_DIR)
     return {"history": sched.get_history(limit)}
+
+
+# ─────────────────────────────────────────────
+# WEBSOCKET — LIVE PRICE STREAMING
+# ─────────────────────────────────────────────
+
+@app.websocket("/ws/live/{ticker}")
+async def ws_live(ws: WebSocket, ticker: str):
+    """
+    WebSocket endpoint for live stock-price streaming.
+
+    Protocol
+    --------
+    • Client connects  → server starts emitting {type:"price", ...} every
+      WS_PUBLISH_INTERVAL seconds (default 2 s).
+    • Client may send  → "ping"  to check liveness; server replies {type:"pong"}.
+    • Server sends     → {type:"price", symbol, price, change, change_pct,
+                          prediction, trend, simulated, timestamp}
+    """
+    from ws_manager import get_ws_manager
+    from ws_publisher import get_publisher
+
+    mgr    = get_ws_manager()
+    ticker = _normalize(ticker)
+    await mgr.connect(ws, ticker)
+
+    # Ensure publisher is running (idempotent)
+    pub = get_publisher(mgr, model_dir=MODEL_DIR)
+    pub.start()
+
+    try:
+        while True:
+            raw = await ws.receive_text()
+            if raw.strip() == "ping":
+                await ws.send_text('{"type":"pong"}')
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        log.warning("WS error [%s]: %s", ticker, exc)
+    finally:
+        await mgr.disconnect(ws)
+
+
+@app.get("/api/ws/stats", tags=["WebSocket"])
+def ws_stats():
+    """Return current WebSocket connection stats (useful for monitoring)."""
+    from ws_manager import get_ws_manager
+    return get_ws_manager().stats()
 
 
 # ─────────────────────────────────────────────

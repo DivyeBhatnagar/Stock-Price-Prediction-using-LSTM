@@ -76,7 +76,6 @@ NIFTY50_STOCKS = {
     "SUNPHARMA":  {"name": "Sun Pharmaceutical Industries",  "sector": "Pharma"},
     "TCS":        {"name": "Tata Consultancy Services",      "sector": "IT Services"},
     "TATACONSUM": {"name": "Tata Consumer Products",         "sector": "FMCG"},
-    "TATAMOTORS": {"name": "Tata Motors",                    "sector": "Automobile"},
     "TATASTEEL":  {"name": "Tata Steel",                     "sector": "Metals / Steel"},
     "TECHM":      {"name": "Tech Mahindra",                  "sector": "IT Services"},
     "TITAN":      {"name": "Titan Company",                  "sector": "Consumer Goods"},

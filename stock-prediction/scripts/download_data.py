@@ -1,7 +1,7 @@
 """
 scripts/download_data.py
 ========================
-Download 10 years of historical OHLCV data for all 50 NIFTY companies
+Download 10 years of historical OHLCV data for 49 NIFTY companies
 from Yahoo Finance and save them to data/stocks/{TICKER}.NS.csv.
 
 Usage
@@ -15,7 +15,7 @@ Output
     data/stocks/RELIANCE.NS.csv
     data/stocks/TCS.NS.csv
     data/stocks/HDFCBANK.NS.csv
-    ... (50 files total)
+    ... (49 files total)
 
 Author  : Stock-Prediction AI Pipeline
 Version : 2.0.0

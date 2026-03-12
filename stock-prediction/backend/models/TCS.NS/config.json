@@ -1,0 +1,36 @@
+{
+  "ticker": "TCS.NS",
+  "window_size": 60,
+  "forecast_horizon": 1,
+  "n_features": 16,
+  "feature_cols": [
+    "Open",
+    "High",
+    "Low",
+    "Close",
+    "Volume",
+    "SMA_20",
+    "SMA_50",
+    "EMA_20",
+    "RSI",
+    "MACD",
+    "MACD_Signal",
+    "BB_Upper",
+    "BB_Lower",
+    "BB_Width",
+    "ATR",
+    "Return"
+  ],
+  "split_ratio": 0.8,
+  "epochs_trained": 27,
+  "metrics": {
+    "rmse": 409.0156,
+    "mae": 315.638,
+    "mape": 9.0725,
+    "r2": 0.0198,
+    "directional_accuracy": 0.4844
+  },
+  "train_time_sec": 67.4,
+  "model_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/TCS.NS/model.keras",
+  "scaler_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/TCS.NS/scaler.pkl"
+}

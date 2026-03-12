@@ -1,7 +1,7 @@
 // Dashboard.jsx  —  Main page component wiring everything together
 
 import { useState, useCallback } from "react";
-import { AlertCircle, X, TrendingUp, CandlestickChart as CandleIcon, BarChart2, Settings } from "lucide-react";
+import { AlertCircle, X, TrendingUp, CandlestickChart as CandleIcon, BarChart2, Settings, Activity } from "lucide-react";
 
 import TickerSearch     from "../components/TickerSearch";
 import PriceChart       from "../components/PriceChart";
@@ -13,11 +13,15 @@ import IndicatorChart   from "../components/IndicatorChart";
 import ForecastTable    from "../components/ForecastTable";
 import MarketInfoBar    from "../components/MarketInfoBar";
 import DataFreshnessBar from "../components/DataFreshnessBar";
+import LivePriceChart   from "../components/LivePriceChart";
+import LivePriceTicker  from "../components/LivePriceTicker";
 import { useStock }     from "../hooks/useStock";
+import { useLivePrice } from "../hooks/useLivePrice";
 
 export default function Dashboard() {
   const [activeTicker, setActiveTicker] = useState("RELIANCE.NS");
   const [activeTab, setActiveTab]       = useState("overview");
+  const [liveEnabled, setLiveEnabled]   = useState(false);
 
   const {
     stockData, prediction, metrics,
@@ -25,6 +29,11 @@ export default function Dashboard() {
     loadStock, loadPrediction,
     startTraining, pollTraining,
   } = useStock();
+
+  const { latestPrice, priceHistory, wsStatus, STATUS } = useLivePrice(
+    activeTicker,
+    { enabled: liveEnabled }
+  );
 
   const handleSearch = useCallback(async (ticker, horizon) => {
     setActiveTicker(ticker);
@@ -47,6 +56,7 @@ export default function Dashboard() {
     { id: "overview",   label: "Overview",    Icon: TrendingUp  },
     { id: "candles",    label: "Candlestick", Icon: CandleIcon  },
     { id: "indicators", label: "Indicators",  Icon: BarChart2   },
+    { id: "live",       label: "Live",        Icon: Activity    },
     { id: "training",   label: "Train Model", Icon: Settings    },
   ];
 
@@ -99,18 +109,30 @@ export default function Dashboard() {
 
         {/* ── Tab navigation ────────────────── */}
         {stockData && (
-          <div className="flex gap-1 rounded-xl border border-surface-border bg-surface-card p-1 shadow-card">
+          <div
+            role="tablist"
+            aria-label="Dashboard views"
+            className="flex gap-1 rounded-xl border border-surface-border bg-surface-card p-1 shadow-card"
+          >
             {TABS.map(({ id, label, Icon }) => (
               <button
                 key={id}
-                onClick={() => setActiveTab(id)}
+                role="tab"
+                id={`tab-${id}`}
+                aria-selected={activeTab === id}
+                aria-controls={`tabpanel-${id}`}
+                onClick={() => {
+                  setActiveTab(id);
+                  if (id === "live") setLiveEnabled(true);
+                }}
                 className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors duration-200
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600
                   ${activeTab === id
                     ? "bg-brand-600 text-white shadow-sm"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-4 w-4" aria-hidden="true" />
                 <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
@@ -119,7 +141,12 @@ export default function Dashboard() {
 
         {/* ── Tab content ───────────────────── */}
         {activeTab === "overview" && (
-          <div className="space-y-5">
+          <div
+            role="tabpanel"
+            id="tabpanel-overview"
+            aria-labelledby="tab-overview"
+            className="space-y-5"
+          >
             <PriceChart stockData={stockData} prediction={prediction} ticker={activeTicker} />
             {prediction && (
               <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -130,15 +157,75 @@ export default function Dashboard() {
           </div>
         )}
 
-        {activeTab === "candles"    && <CandlestickChart stockData={stockData} ticker={activeTicker} />}
-        {activeTab === "indicators" && <IndicatorChart   stockData={stockData} />}
-        {activeTab === "training"   && (
-          <TrainingPanel
-            ticker={activeTicker}
-            onTrain={handleTrainWithParams}
-            trainingStatus={trainingStatus}
-            onPollStatus={pollTraining}
-          />
+        {activeTab === "candles" && (
+          <div role="tabpanel" id="tabpanel-candles" aria-labelledby="tab-candles">
+            <CandlestickChart stockData={stockData} ticker={activeTicker} />
+          </div>
+        )}
+
+        {activeTab === "indicators" && (
+          <div role="tabpanel" id="tabpanel-indicators" aria-labelledby="tab-indicators">
+            <IndicatorChart stockData={stockData} />
+          </div>
+        )}
+
+        {activeTab === "live" && (
+          <div
+            role="tabpanel"
+            id="tabpanel-live"
+            aria-labelledby="tab-live"
+            className="space-y-4"
+          >
+            {/* Enable / Disable toggle */}
+            <div className="flex items-center justify-between rounded-xl border border-surface-border bg-surface-card px-4 py-3 shadow-card">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Live Data Stream</p>
+                <p className="text-xs text-slate-500">
+                  WebSocket — price updates every ~2 s
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={liveEnabled}
+                aria-label={liveEnabled ? "Disable live stream" : "Enable live stream"}
+                onClick={() => setLiveEnabled((v) => !v)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2
+                  ${liveEnabled ? "bg-brand-600" : "bg-slate-200"}`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200
+                    ${liveEnabled ? "translate-x-5" : "translate-x-0.5"}`}
+                />
+              </button>
+            </div>
+
+            {/* Live price ticker */}
+            <LivePriceTicker
+              latestPrice={latestPrice}
+              wsStatus={wsStatus}
+              ticker={activeTicker}
+            />
+
+            {/* Streaming chart */}
+            <LivePriceChart
+              priceHistory={priceHistory}
+              latestPrice={latestPrice}
+              ticker={activeTicker}
+              height={360}
+            />
+          </div>
+        )}
+
+        {activeTab === "training" && (
+          <div role="tabpanel" id="tabpanel-training" aria-labelledby="tab-training">
+            <TrainingPanel
+              ticker={activeTicker}
+              onTrain={handleTrainWithParams}
+              trainingStatus={trainingStatus}
+              onPollStatus={pollTraining}
+            />
+          </div>
         )}
 
         {/* ── Empty state ───────────────────── */}

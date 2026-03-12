@@ -1,0 +1,64 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Stock Market Application
+# Services: backend (FastAPI + WebSocket), frontend (Vite/nginx)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    container_name: stockoracle-backend
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      # WebSocket publisher tuning
+      WS_PUBLISH_INTERVAL: "${WS_PUBLISH_INTERVAL:-2}"
+      WS_CACHE_TTL:        "${WS_CACHE_TTL:-5}"
+      WS_SIMULATE_NOISE:   "${WS_SIMULATE_NOISE:-0.0003}"
+      # Optional third-party API keys
+      FINNHUB_API_KEY:       "${FINNHUB_API_KEY:-}"
+      ALPHAVANTAGE_API_KEY:  "${ALPHAVANTAGE_API_KEY:-}"
+    volumes:
+      # Persist trained models and historical data across restarts
+      - ./backend/models:/app/models
+      - ./data:/data
+    networks:
+      - stockoracle
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── React/Vite frontend ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../Dockerfile.frontend
+      args:
+        VITE_API_URL: "http://localhost:${API_PORT:-8000}"
+        VITE_WS_URL:  "ws://localhost:${API_PORT:-8000}"
+    container_name: stockoracle-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - stockoracle
+
+networks:
+  stockoracle:
+    driver: bridge
+
+volumes:
+  models:
+  data:
