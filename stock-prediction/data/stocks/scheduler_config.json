@@ -1,0 +1,31 @@
+{
+  "config": {
+    "enabled": true,
+    "mode": "interval",
+    "interval_minutes": 60,
+    "cron_hour": "16",
+    "cron_minute": "30",
+    "cron_day_of_week": "mon-fri",
+    "max_concurrent": 3,
+    "auto_add_trained": true
+  },
+  "history": [
+    {
+      "timestamp": "2026-03-12T23:19:05.095643",
+      "duration_sec": 403.2,
+      "total": 2,
+      "refreshed": 2,
+      "errors": [],
+      "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-03-13T12:37:28.423747",
+      "duration_sec": 410.7,
+      "total": 2,
+      "refreshed": 2,
+      "errors": [],
+      "trigger": "scheduled"
+    }
+  ],
+  "saved_at": "2026-03-13T12:44:19.111309"
+}

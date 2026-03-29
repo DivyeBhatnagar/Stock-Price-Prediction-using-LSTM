@@ -2,7 +2,7 @@
   "ticker": "RELIANCE.NS",
   "window_size": 60,
   "forecast_horizon": 1,
-  "n_features": 16,
+  "n_features": 27,
   "feature_cols": [
     "Open",
     "High",
@@ -19,18 +19,29 @@
     "BB_Lower",
     "BB_Width",
     "ATR",
-    "Return"
+    "Return",
+    "Vol_SMA20",
+    "Vol_Ratio",
+    "STOCH_K",
+    "STOCH_D",
+    "Williams_R",
+    "CCI",
+    "Price_SMA20_Ratio",
+    "Price_SMA50_Ratio",
+    "Log_Return",
+    "OBV",
+    "ADX"
   ],
-  "split_ratio": 0.8,
-  "epochs_trained": 23,
+  "split_ratio": 0.85,
+  "epochs_trained": 152,
   "metrics": {
-    "rmse": 150.2201,
-    "mae": 129.15,
-    "mape": 9.8368,
-    "r2": -0.04,
-    "directional_accuracy": 0.4865
+    "rmse": 24.382,
+    "mae": 19.0943,
+    "mape": 1.3837,
+    "r2": -0.8901,
+    "directional_accuracy": 0.4958
   },
-  "train_time_sec": 440.1,
+  "train_time_sec": 582.9,
   "model_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/RELIANCE.NS/model.keras",
   "scaler_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/RELIANCE.NS/scaler.pkl"
 }

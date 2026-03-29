@@ -72,7 +72,7 @@ def build_lstm_model(
     window_size: int,
     n_features: int,
     forecast_horizon: int = 1,
-    lstm_units: Tuple[int, ...] = (128, 64),
+    lstm_units: Tuple[int, ...] = (256, 128, 64),
     dropout_rate: float = 0.2,
     learning_rate: float = 1e-3,
     use_attention: bool = True,
@@ -129,9 +129,10 @@ def build_lstm_model(
     # If no attention and last LSTM is not returning sequences, x is already (batch, features)
 
     # ── Fully-Connected Head ──────────────────
-    x = Dense(64, activation="relu", name="dense_1")(x)
+    x = Dense(128, activation="relu", kernel_regularizer=l2(1e-4), name="dense_1")(x)
     x = Dropout(dropout_rate / 2, name="dropout_head")(x)
-    x = Dense(32, activation="relu", name="dense_2")(x)
+    x = Dense(64, activation="relu", kernel_regularizer=l2(1e-4), name="dense_2")(x)
+    x = Dropout(dropout_rate / 4, name="dropout_head2")(x)
 
     # Output: predict `forecast_horizon` scaled Close prices
     outputs = Dense(forecast_horizon, activation="linear", name="output")(x)
@@ -173,8 +174,8 @@ def build_simple_lstm(
 
 def get_callbacks(
     checkpoint_path: str,
-    patience: int = 15,
-    min_lr: float = 1e-6
+    patience: int = 25,
+    min_lr: float = 1e-7
 ) -> list:
     """
     Standard training callbacks:
@@ -193,7 +194,7 @@ def get_callbacks(
         ReduceLROnPlateau(
             monitor="val_loss",
             factor=0.5,
-            patience=patience // 2,
+            patience=patience // 3,
             min_lr=min_lr,
             verbose=1
         ),

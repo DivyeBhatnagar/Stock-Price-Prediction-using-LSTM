@@ -1,0 +1,29 @@
+{
+  "freshness": {
+    "RELIANCE.NS": {
+      "ticker": "RELIANCE.NS",
+      "last_updated": "2026-03-13T12:44:19.110631",
+      "latest_date": "2026-03-13",
+      "total_rows": 2471,
+      "gaps_filled": 0,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 3
+    },
+    "TCS.NS": {
+      "ticker": "TCS.NS",
+      "last_updated": "2026-03-13T12:40:48.926084",
+      "latest_date": "2026-03-13",
+      "total_rows": 2471,
+      "gaps_filled": 0,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 2
+    }
+  },
+  "watchlist": [
+    "TCS.NS",
+    "RELIANCE.NS"
+  ],
+  "saved_at": "2026-03-13T12:44:19.110682"
+}

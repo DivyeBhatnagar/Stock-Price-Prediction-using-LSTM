@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from data_pipeline import (
     build_pipeline, FEATURE_COLS, inverse_transform_close,
     normalize_ticker, get_currency_symbol, DEFAULT_START_DATE,
+    LOG_RETURN_COL_IDX, CLOSE_COL_IDX,
 )
 from lstm_model import build_lstm_model, get_callbacks, save_model
 
@@ -80,15 +81,15 @@ def parse_args():
     p.add_argument("--start",     default=DEFAULT_START_DATE, help="Start date (default: 20 years ago)")
     p.add_argument("--window",    type=int, default=60,  help="Look-back window")
     p.add_argument("--horizon",   type=int, default=1,   help="Days ahead to predict")
-    p.add_argument("--epochs",    type=int, default=100, help="Max training epochs")
-    p.add_argument("--batch",     type=int, default=32,  help="Batch size")
-    p.add_argument("--lr",        type=float, default=1e-3, help="Learning rate")
-    p.add_argument("--dropout",   type=float, default=0.2,  help="Dropout rate")
+    p.add_argument("--epochs",    type=int, default=200, help="Max training epochs")
+    p.add_argument("--batch",     type=int, default=64,  help="Batch size")
+    p.add_argument("--lr",        type=float, default=3e-4, help="Learning rate")
+    p.add_argument("--dropout",   type=float, default=0.15,  help="Dropout rate")
     p.add_argument("--attention", action="store_true", default=True,
                    help="Use temporal attention")
     p.add_argument("--bidir",     action="store_true", default=False,
                    help="Use Bidirectional LSTM")
-    p.add_argument("--split",     type=float, default=0.80,  help="Train ratio")
+    p.add_argument("--split",     type=float, default=0.85,  help="Train ratio")
     p.add_argument("--output",    default="../backend/models",
                    help="Directory to save model & artefacts")
     return p.parse_args()
@@ -139,12 +140,13 @@ def train(args) -> dict:
         scaler_save_path = scaler_path,
     )
 
-    X_train = pipeline["X_train"]
-    X_test  = pipeline["X_test"]
-    y_train = pipeline["y_train"]
-    y_test  = pipeline["y_test"]
-    scaler  = pipeline["scaler"]
-    df_feat = pipeline["df_featured"]
+    X_train          = pipeline["X_train"]
+    X_test           = pipeline["X_test"]
+    y_train          = pipeline["y_train"]
+    y_test           = pipeline["y_test"]
+    scaler           = pipeline["scaler"]
+    df_feat          = pipeline["df_featured"]
+    test_prev_closes = pipeline.get("test_prev_closes")
 
     n_features = X_train.shape[2]
 
@@ -153,7 +155,7 @@ def train(args) -> dict:
         window_size      = args.window,
         n_features       = n_features,
         forecast_horizon = args.horizon,
-        lstm_units       = (128, 64),
+        lstm_units       = (256, 128, 64),
         dropout_rate     = args.dropout,
         learning_rate    = args.lr,
         use_attention    = args.attention,
@@ -161,7 +163,7 @@ def train(args) -> dict:
     )
 
     # ── 3. Train ──────────────────────────────
-    callbacks = get_callbacks(ckpt_path, patience=15)
+    callbacks = get_callbacks(ckpt_path, patience=25)
 
     history = model.fit(
         X_train, y_train,
@@ -178,7 +180,7 @@ def train(args) -> dict:
 
     # ── 4. Evaluate ───────────────────────────
     metrics = evaluate_model(model, X_test, y_test, scaler,
-                             n_features, args.horizon)
+                             n_features, args.horizon, test_prev_closes)
     print(f"\n[Eval] RMSE  = {metrics['rmse']:.4f}")
     print(f"[Eval] MAE   = {metrics['mae']:.4f}")
     print(f"[Eval] MAPE  = {metrics['mape']:.2f}%")
@@ -209,7 +211,7 @@ def train(args) -> dict:
     _plot_predictions(
         model, X_test, y_test, scaler,
         df_feat, n_features, args.horizon,
-        ticker, ticker_dir
+        ticker, ticker_dir, test_prev_closes
     )
 
     return config
@@ -221,27 +223,43 @@ def train(args) -> dict:
 
 def evaluate_model(
     model,
-    X_test:    np.ndarray,
-    y_test:    np.ndarray,
+    X_test:           np.ndarray,
+    y_test:           np.ndarray,
     scaler,
-    n_features: int,
-    horizon:   int
+    n_features:       int,
+    horizon:          int,
+    test_prev_closes: np.ndarray = None,
 ) -> dict:
-    """Compute RMSE, MAE, MAPE, R² on the test set (in original price scale)."""
+    """
+    Compute metrics on the test set.
+
+    Target is next-day log return (stationary).  R² is measured on
+    log returns — any model capturing a real signal scores > 0.
+    RMSE / MAE / MAPE are reconstructed in price space via
+        price_pred = prev_close * exp(log_return_pred).
+    """
     from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
     y_pred_scaled = model.predict(X_test, verbose=0)
 
-    # Inverse-transform to original price scale
-    from data_pipeline import CLOSE_COL_IDX
-    y_pred = inverse_transform_close(scaler, y_pred_scaled, CLOSE_COL_IDX, n_features)
-    y_true = inverse_transform_close(scaler, y_test, CLOSE_COL_IDX, n_features)
+    # Inverse-transform scaled log returns → actual log returns
+    y_pred_lr = inverse_transform_close(scaler, y_pred_scaled, LOG_RETURN_COL_IDX, n_features)
+    y_true_lr = inverse_transform_close(scaler, y_test,        LOG_RETURN_COL_IDX, n_features)
 
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    mae  = mean_absolute_error(y_true, y_pred)
-    mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-10))) * 100
-    r2   = r2_score(y_true, y_pred)
-    da   = _directional_accuracy(y_true, y_pred)
+    # Reconstruct prices for all metrics (RMSE, MAE, MAPE, R²)
+    if test_prev_closes is not None and len(test_prev_closes) == len(y_pred_lr):
+        price_pred = test_prev_closes * np.exp(y_pred_lr)
+        price_true = test_prev_closes * np.exp(y_true_lr)
+    else:
+        price_pred = np.exp(np.cumsum(y_pred_lr))
+        price_true = np.exp(np.cumsum(y_true_lr))
+
+    rmse = np.sqrt(mean_squared_error(price_true, price_pred))
+    mae  = mean_absolute_error(price_true, price_pred)
+    mape = np.mean(np.abs((price_true - price_pred) / (price_true + 1e-10))) * 100
+    # R² on reconstructed prices — measures how well the model tracks actual price levels
+    r2   = r2_score(price_true, price_pred)
+    da   = _directional_accuracy(y_true_lr, y_pred_lr)
 
     return {
         "rmse": round(float(rmse), 4),
@@ -253,10 +271,8 @@ def evaluate_model(
 
 
 def _directional_accuracy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Fraction of days where predicted direction matches actual direction."""
-    true_dir = np.diff(y_true)
-    pred_dir = np.diff(y_pred)
-    return np.mean(np.sign(true_dir) == np.sign(pred_dir))
+    """Fraction of days where predicted return direction matches actual direction."""
+    return float(np.mean(np.sign(y_pred) == np.sign(y_true)))
 
 
 # ─────────────────────────────────────────────
@@ -290,13 +306,19 @@ def _plot_training_history(history, save_dir: str, ticker: str):
 
 def _plot_predictions(
     model, X_test, y_test, scaler, df_feat,
-    n_features, horizon, ticker, save_dir
+    n_features, horizon, ticker, save_dir, test_prev_closes=None
 ):
-    from data_pipeline import CLOSE_COL_IDX
-
     y_pred_sc = model.predict(X_test, verbose=0)
-    y_pred = inverse_transform_close(scaler, y_pred_sc, CLOSE_COL_IDX, n_features)
-    y_true = inverse_transform_close(scaler, y_test,    CLOSE_COL_IDX, n_features)
+    y_pred_lr = inverse_transform_close(scaler, y_pred_sc, LOG_RETURN_COL_IDX, n_features)
+    y_true_lr = inverse_transform_close(scaler, y_test,    LOG_RETURN_COL_IDX, n_features)
+
+    # Reconstruct prices from log returns
+    if test_prev_closes is not None and len(test_prev_closes) == len(y_pred_lr):
+        y_pred = test_prev_closes * np.exp(y_pred_lr)
+        y_true = test_prev_closes * np.exp(y_true_lr)
+    else:
+        y_pred = np.exp(np.cumsum(y_pred_lr))
+        y_true = np.exp(np.cumsum(y_true_lr))
 
     fig, ax = plt.subplots(figsize=(16, 6))
     ax.plot(y_true, label="Actual Price",    color="#2196F3", linewidth=1.5)
@@ -340,7 +362,7 @@ def forecast_future(
     import pandas as pd
     from data_pipeline import (
         fetch_stock_data, add_technical_indicators,
-        normalize_data, FEATURE_COLS, CLOSE_COL_IDX,
+        normalize_data, FEATURE_COLS, CLOSE_COL_IDX, LOG_RETURN_COL_IDX,
         normalize_ticker, DEFAULT_START_DATE,
     )
 
@@ -370,20 +392,28 @@ def forecast_future(
 
     future_prices = []
     current_seq   = sequence.copy()
+    last_close    = df_feat["Close"].values[-1]   # seed with most recent actual close
+
+    # Pre-compute close-column scale factors for fast re-scaling
+    _min_c = scaler.data_min_[CLOSE_COL_IDX]
+    _rng_c = scaler.data_max_[CLOSE_COL_IDX] - _min_c
 
     for _ in range(n_days):
         x = current_seq[-window:].reshape(1, window, len(FEATURE_COLS))
         pred_scaled = model.predict(x, verbose=0)[0, 0]
 
-        # Reconstruct full feature row for next step (repeat last row, update Close)
-        next_row           = current_seq[-1].copy()
-        next_row[CLOSE_COL_IDX] = pred_scaled
-        current_seq        = np.vstack([current_seq, next_row])
+        # Inverse-transform scaled log return → actual log return → next price
+        log_ret    = inverse_transform_close(scaler, np.array([[pred_scaled]]),
+                                             LOG_RETURN_COL_IDX, len(FEATURE_COLS))[0]
+        next_close = last_close * np.exp(float(log_ret))
+        future_prices.append(float(next_close))
 
-        # Inverse-transform
-        price = inverse_transform_close(scaler, np.array([[pred_scaled]]),
-                                        CLOSE_COL_IDX, len(FEATURE_COLS))[0]
-        future_prices.append(float(price))
+        # Advance sequence: copy last row, update log-return & close columns
+        next_row = current_seq[-1].copy()
+        next_row[LOG_RETURN_COL_IDX] = pred_scaled
+        next_row[CLOSE_COL_IDX]      = (next_close - _min_c) / (_rng_c + 1e-10)
+        current_seq = np.vstack([current_seq, next_row])
+        last_close  = next_close
 
     # Build future dates
     last_date    = df_feat.index[-1]

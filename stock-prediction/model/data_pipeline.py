@@ -292,6 +292,47 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # ── Daily Returns ─────────────────────────
     df["Return"] = df["Close"].pct_change()
 
+    # ── Volume Indicators ─────────────────────
+    df["Vol_SMA20"] = df["Volume"].rolling(20).mean()
+    df["Vol_Ratio"] = df["Volume"] / (df["Vol_SMA20"] + 1e-10)
+
+    # ── Stochastic Oscillator ─────────────────
+    low14          = df["Low"].rolling(14).min()
+    high14         = df["High"].rolling(14).max()
+    df["STOCH_K"]  = 100 * (df["Close"] - low14) / (high14 - low14 + 1e-10)
+    df["STOCH_D"]  = df["STOCH_K"].rolling(3).mean()
+
+    # ── Williams %R ───────────────────────────
+    df["Williams_R"] = -100 * (high14 - df["Close"]) / (high14 - low14 + 1e-10)
+
+    # ── CCI (Commodity Channel Index) ─────────
+    tp             = (df["High"] + df["Low"] + df["Close"]) / 3
+    df["CCI"]      = (tp - tp.rolling(20).mean()) / (0.015 * tp.rolling(20).std() + 1e-10)
+
+    # ── Price vs Moving Average Ratios ────────
+    df["Price_SMA20_Ratio"] = df["Close"] / (df["SMA_20"] + 1e-10) - 1
+    df["Price_SMA50_Ratio"] = df["Close"] / (df["SMA_50"] + 1e-10) - 1
+
+    # ── Log Return ────────────────────────────
+    df["Log_Return"] = np.log(df["Close"] / df["Close"].shift(1).clip(lower=1e-10))
+
+    # ── OBV (On-Balance Volume) ───────────────
+    df["OBV"] = (np.sign(df["Close"].diff().fillna(0)) * df["Volume"]).cumsum()
+
+    # ── ADX (Average Directional Index) ───────
+    _tr   = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+    _atr  = _tr.ewm(alpha=1/14, adjust=False).mean()
+    _dm_p = np.where(
+        (df["High"] - df["High"].shift(1)) > (df["Low"].shift(1) - df["Low"]),
+        np.maximum(df["High"] - df["High"].shift(1), 0), 0)
+    _dm_m = np.where(
+        (df["Low"].shift(1) - df["Low"]) > (df["High"] - df["High"].shift(1)),
+        np.maximum(df["Low"].shift(1) - df["Low"], 0), 0)
+    _di_p = 100 * pd.Series(_dm_p, index=df.index).ewm(alpha=1/14, adjust=False).mean() / (_atr + 1e-10)
+    _di_m = 100 * pd.Series(_dm_m, index=df.index).ewm(alpha=1/14, adjust=False).mean() / (_atr + 1e-10)
+    _dx   = 100 * (_di_p - _di_m).abs() / (_di_p + _di_m + 1e-10)
+    df["ADX"] = _dx.ewm(alpha=1/14, adjust=False).mean()
+
     df.dropna(inplace=True)
     return df
 
@@ -423,9 +464,17 @@ FEATURE_COLS = [
     "SMA_20", "SMA_50", "EMA_20",
     "RSI", "MACD", "MACD_Signal",
     "BB_Upper", "BB_Lower", "BB_Width",
-    "ATR", "Return"
+    "ATR", "Return",
+    # Extended features
+    "Vol_SMA20", "Vol_Ratio",
+    "STOCH_K", "STOCH_D",
+    "Williams_R", "CCI",
+    "Price_SMA20_Ratio", "Price_SMA50_Ratio",
+    "Log_Return", "OBV",
+    "ADX",
 ]
-CLOSE_COL_IDX = FEATURE_COLS.index("Close")   # = 3
+CLOSE_COL_IDX     = FEATURE_COLS.index("Close")       # = 3
+LOG_RETURN_COL_IDX = FEATURE_COLS.index("Log_Return")  # stationary target
 
 
 def build_pipeline(
@@ -455,25 +504,46 @@ def build_pipeline(
     # Step 2 – Feature Engineering
     df_feat = add_technical_indicators(df_raw)
 
-    # Step 3 – Normalise
-    scaled, scaler = normalize_data(df_feat, FEATURE_COLS, scaler_save_path)
+    # Step 3 – Scale (fit ONLY on training portion — no future leakage)
+    data    = df_feat[FEATURE_COLS].values
+    n_train = int(len(data) * split_ratio)
 
-    # Step 4 – Windowing
-    X, y = create_sequences(scaled, window_size, CLOSE_COL_IDX, forecast_horizon)
+    if scaler_save_path and os.path.exists(scaler_save_path):
+        scaler = joblib.load(scaler_save_path)
+        print(f"[DataPipeline] Loaded existing scaler from {scaler_save_path}")
+    else:
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        scaler.fit(data[:n_train])          # ← fit on train only
+        if scaler_save_path:
+            os.makedirs(os.path.dirname(scaler_save_path), exist_ok=True)
+            joblib.dump(scaler, scaler_save_path)
+            print(f"[DataPipeline] Scaler saved → {scaler_save_path}")
+    scaled = scaler.transform(data)
+
+    # Step 4 – Windowing (target = next-day log return — stationary signal)
+    X, y = create_sequences(scaled, window_size, LOG_RETURN_COL_IDX, forecast_horizon)
 
     # Step 5 – Split
     X_train, X_test, y_train, y_test = split_data(X, y, split_ratio)
 
+    # Previous-close prices for each test sample (needed to reconstruct prices from log returns)
+    n_train_seqs = len(X_train)
+    test_prev_closes = df_feat["Close"].values[
+        n_train_seqs + window_size - 1 :
+        n_train_seqs + window_size - 1 + len(X_test)
+    ]
+
     return {
-        "X_train":      X_train,
-        "X_test":       X_test,
-        "y_train":      y_train,
-        "y_test":       y_test,
-        "scaler":       scaler,
-        "feature_cols": FEATURE_COLS,
-        "close_col_idx": CLOSE_COL_IDX,
-        "df_raw":       df_raw,
-        "df_featured":  df_feat,
+        "X_train":          X_train,
+        "X_test":           X_test,
+        "y_train":          y_train,
+        "y_test":           y_test,
+        "scaler":           scaler,
+        "feature_cols":     FEATURE_COLS,
+        "close_col_idx":    CLOSE_COL_IDX,
+        "df_raw":           df_raw,
+        "df_featured":      df_feat,
+        "test_prev_closes": test_prev_closes,
     }
 
 
