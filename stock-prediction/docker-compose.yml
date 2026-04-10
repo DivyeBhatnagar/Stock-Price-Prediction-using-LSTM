@@ -37,23 +37,6 @@ services:
       retries: 3
       start_period: 15s
 
-  # ── React/Vite frontend ─────────────────────────────────────────────────────
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: ../Dockerfile.frontend
-      args:
-        VITE_API_URL: "http://localhost:${API_PORT:-8000}"
-        VITE_WS_URL:  "ws://localhost:${API_PORT:-8000}"
-    container_name: stockoracle-frontend
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - stockoracle
 
 networks:
   stockoracle:

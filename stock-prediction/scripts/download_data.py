@@ -33,6 +33,12 @@ sys.path.insert(0, os.path.join(ROOT, "model"))
 
 import pandas as pd
 import yfinance as yf
+import ssl
+import urllib3
+
+# Disable SSL verification warnings and errors
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+ssl._create_default_https_context = ssl._create_unverified_context
 
 try:
     from tqdm import tqdm

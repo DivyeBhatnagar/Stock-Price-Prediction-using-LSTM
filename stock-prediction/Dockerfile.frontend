@@ -1,4 +1,3 @@
-# ── Frontend Dockerfile ──────────────────────────────────────────────────────
 # Stage 1: build the Vite/React app
 # Stage 2: serve the static bundle via nginx (alpine)
 # ─────────────────────────────────────────────────────────────────────────────
