@@ -1,0 +1,404 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{placeins}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+
+% Remove colored boxes around citations/refs/links in the PDF
+\hypersetup{hidelinks, pdfborder={0 0 0}}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Stock Market Trend Prediction Using LSTMs}
+
+\author{\IEEEauthorblockN{Divye Bhatnagar\textsuperscript{1}, Gopal Agarwal\textsuperscript{2}, Harsh Aggarwal\textsuperscript{3}, Nandini Solanki\textsuperscript{4}, Namit Chawla\textsuperscript{5}}
+\IEEEauthorblockA{\textit{Department of Computer Science and Engineering} \\
+\textit{IILM University, Greater Noida}\\
+Uttar Pradesh, India \\
+\textsuperscript{1}divye.bhatnagar.cs28@iilm.edu, \textsuperscript{2}gopal.agarwal.cs28@iilm.edu, \textsuperscript{3}harsh.aggarwal.cs28@iilm.edu\\
+\textsuperscript{4}nandini.solanki.cs28@iilm.edu, \textsuperscript{5}namit.chawla@iilm.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+It is hard to make accurate short-term predictions in emerging equity markets because of changing patterns, shifts in market conditions, and noisy price changes. This study introduces a complete deep learning approach for NIFTY 50 stocks that uses a bidirectional LSTM model with a temporal attention mechanism to predict daily logarithmic returns. The model uses daily OHLCV data, adds common technical indicators, and scales them using parameters only from the training data. These data are made into fixed-length sequences by looking back at 60 trading days. The model predicts the daily log return and then turns this into a price forecast using exponential reconstruction. The performance is checked using different metrics like RMSE, MAE, MAPE, $R^2$, and directional accuracy. The validation process is done in a way that avoids data leakage and allows for consistent and reproducible results.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Bidirectional LSTM, Temporal Attention, Log Returns, Time-Series Forecasting, NIFTY 50, NSE, Technical Indicators, Deep Learning
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+The Indian stock market, represented by the National Stock Exchange (NSE) and its main index NIFTY 50, has become one of the fastest-growing equity markets in the world. This growth is due to more participation from institutional investors, improvements in trading technology, and greater connection with international financial markets. However, the NIFTY 50's complexity comes from several factors like specific macroeconomic trends in emerging markets, political events that affect foreign investments, the dominance of the IT and banking sectors, and the unique structure of NSE trading. These factors make it very difficult to predict stock prices.
+
+Traditionally, the analysis of NIFTY 50 has been done using fundamental analysis (such as studying earnings in the IT sector, quality of assets in the banking sector, currency movements, and the impact of Fed policies) or technical analysis (searching for patterns in historical price data within the NSE context). But these traditional methods often fail to capture the complex, non-linear relationships and patterns that modern Indian financial markets display, especially in environments with algorithmic trading, high-frequency retail participation, and immediate responses to global market events.
+
+The rise of machine learning and deep learning over the past ten years has transformed quantitative finance research worldwide. Still, the use of these techniques in predicting NIFTY 50 stocks is not as common as it is for developed market indices. Among these methods, LSTM models have gained attention for their ability to handle long-term dependencies in time series data. However, their performance in emerging markets, which have higher volatility, lower liquidity in some sub-indexes, and regime shifts due to policy changes, has not been thoroughly studied.
+
+In real situations, this challenge happens because of both the market and the data. Stock prices can be hard to predict because they often change quickly, and the same model might not work the same way in different areas of the market, like banking versus technology. Also, real data can have problems like missing days, sudden price changes due to company actions, or big changes in how much prices move after important news or policy changes. These issues make it harder to forecast what will happen in the short term, and it's important to carefully check how well the models work.
+
+Another problem is how the methods are set up. Many results are hard to compare because different experiments use different features, time periods, ways of splitting data, scaling methods, and evaluation techniques. Small choices in how the model is built can accidentally allow information from the future to be used, like using the whole dataset for preprocessing or mixing different time periods during testing. A clear, repeatable process with time-ordered splits, only using scaling during training, and detailed reporting of results can help make the findings more reliable.
+
+This work focuses on predicting the daily log returns instead of actual prices, and then uses that to figure out the closing price for measuring how accurate the predictions are. By using a temporal attention mechanism, the model can focus on the most useful parts of the historical data, making the predictions easier to understand than a basic recurrent network. The main aim is not just to be accurate, but also to have a setup that can be used consistently across different companies without claiming better performance than is actually achieved.
+
+\section{Literature Review}
+
+Looking at research on using LSTM for stock predictions, we found some important things that apply to the Indian market. Studies show that recurrent models are good for financial data that happens over time because they can learn patterns without needing to define time lags manually.
+
+LSTM networks were created to fix a problem in standard RNNs called the vanishing gradient and are now often used as a starting point for predicting time-based data \cite{b4}. However, predicting stock prices is still hard because returns are noisy, change over time, and are affected by market details and shifts in market conditions.
+
+Recent studies look at different ways to build LSTM models and mix them with other tools. Bidirectional LSTMs help better learn from data by using information from both forward and backward directions during training \cite{b13}. Other methods combine LSTM with other parts of the data or add extra tools (like CNN components over time windows) to better capture short-term trends and make the model less sensitive to price scales \cite{b10}. General surveys also say that improvements often come from careful data preparation, feature creation, and testing methods as much as from making the model more complex \cite{b12}.
+
+A common theme in the research is that the results depend a lot on how the experiments are set up. Choices like shuffling data, using data from the whole set to scale, or tuning the model on test data can make results look too good. Even if the model is well-designed, how it's trained, like how many times it's trained and when it stops, affects how well it works in new situations \cite{b6}. These points suggest that when comparing deep learning methods for stock prediction, we should use safe splits without leaks, report clearly, and check using multiple metrics.
+
+Ghosh et al. \cite{b3} studied predicting stock performance in different industry sectors in India using LSTM models. They made a framework that combined company growth rates with LSTM predictions. Their work on banking, IT, pharmaceuticals, and FMCG sectors showed that the best times for making predictions varied a lot between sectors.
+
+Bhandari et al. \cite{b1} demonstrated that LSTM models trained with multiple inputs, such as fundamental, macroeconomic, and technical indicators, can achieve very high R-squared values, over 0.99. They also found that simpler models with 150 hidden units performed better than more complex models with many layers.
+
+Moghar and Hamiche \cite{b6} looked into how training for more epochs affects LSTM accuracy. They found that more training usually improves performance, but this isn't always smooth. There was a point where more training started to cause the model to remember the training data too well and not perform as well on new data.
+
+Zhang \cite{b9} compared LSTM with other machine learning models and found that gradient-boosted trees could sometimes do better than pure LSTM on short-term predictions (1--10 days). This shows that methods based on features can still be effective for short-term predictions.
+
+Despite these findings, there's still a big gap in research: few studies have created a complete, safe deep learning pipeline for NIFTY 50 stocks that focuses on predicting daily log returns and uses attention to find which parts of the past data are most important.
+
+\subsection{Identified Research Gaps and Problem Statement}
+
+Even though deep learning has made progress in forecasting financial time series, there are three main issues in predicting individual NIFTY 50 stocks. First, many models use raw prices directly, but prices can change a lot over time. Using daily log returns makes the target more stable and simplifies evaluation by making it less sensitive to actual price levels.
+
+Second, models like LSTMs are often treated as black boxes, making it hard to know which parts of the data are most important. Adding a temporal attention mechanism makes this clearer and helps the model learn better when there's not much information.
+
+Third, reported results can be too optimistic because of things like using data from the whole set to scale or not considering the direction of errors. Using a time-ordered split, where scaling is done only on training data and both the size and direction of errors are checked, gives more reliable results.
+
+Based on these gaps, this study aims to answer this question: Given daily OHLCV data and engineered technical indicators for NIFTY 50 stocks, can an LSTM model with attention mechanisms accurately predict one-day-ahead log returns, which can then be used to forecast tomorrow’s closing prices using a safe and time-ordered evaluation method?
+
+\section{Objectives of the Study}
+
+This research aims to achieve the following goals:
+
+\begin{enumerate}
+\item Create a complete system for predicting the future prices of the NIFTY 50 companies. This system will use daily price data and technical indicators, and will generate sequences of a fixed length (like 60 trading days).
+\item Train a special kind of neural network called a bidirectional LSTM with a focus on time to predict the daily price change and also the closing price of the next day.
+\item Test how well the model works when it hasn’t seen the data before, using metrics like RMSE, MAE, MAPE, $R^2$, and directional accuracy. It will also be compared to simple methods like using the last known price.
+\item Prepare the trained model so that it can be used again reliably and updated easily, matching the system that was built.
+\end{enumerate}
+
+\section{Hypotheses}
+
+The following ideas are being tested in this research:
+
+\textbf{H1:} Predicting the daily price change is more reliable than directly predicting the closing price, when using the same way to split the data.
+
+\textbf{H2:} Adding a focus on time (temporal attention) improves the accuracy of the predictions compared to a similar LSTM without this focus.
+
+\textbf{H3:} The model developed here performs better than a simple method when tested on new data for typical NIFTY 50 stocks, in terms of error and direction.
+
+\textbf{H4:} Using a bidirectional network improves the ability to predict the direction of price movement compared to a one-directional LSTM, when using the same data and time window.
+
+\textbf{H5:} Including technical indicators that are created from the price data leads to better results in terms of error and direction compared to using only the raw price data.
+
+\section{Methodology}
+
+\subsection{Research Design}
+
+This study follows a clear, data-based approach: (i) collecting and cleaning historical market data, (ii) building a deep learning model to make predictions, and (iii) testing the model on new data in a time-ordered way to avoid using future data in the training stage.
+
+\subsection{Data and Scope}
+
+The work uses daily OHLCV data for the NIFTY 50 companies. This data is collected from Yahoo Finance using a tool called yfinance and saved as separate files for each stock. Each stock's data covers about ten years, for example, RELIANCE.NS has data from April 18, 2016, to April 10, 2026, which is around 2,491 trading days. The model predicts the next trading day’s price.
+
+\subsection{Feature Engineering, Target, and Scaling}
+
+For each day, a set of features is created that includes OHLCV data and specially made technical indicators (totaling 27 in the example). These features include moving averages, momentum indicators, volatility measures, volume information, and trend strength.
+
+The prediction target is the \textbf{next-day log return} of the closing price:
+\begin{equation}
+ r_t = \ln\left(\frac{C_t}{C_{t-1}}\right), \qquad y_t = r_{t+1}.
+\end{equation}
+
+To reduce leakage, scaling parameters are fit \textbf{only on the training segment}. Min--max scaling maps each feature to $[0,1]$:
+\begin{equation}
+ x' = \frac{x - x_{\min}}{x_{\max} - x_{\min}}.
+\end{equation}
+
+Supervised sequences are created using a sliding window of length $L=60$ trading days:
+\begin{equation}
+ X_t = [\mathbf{z}_{t-L+1}, \ldots, \mathbf{z}_{t}], \qquad y_t = r_{t+1}.
+\end{equation}
+
+\subsection{Model Architecture: Stacked BiLSTM with Temporal Attention}
+
+The core model is a \textbf{stacked bidirectional LSTM} that encodes the input window into a sequence of hidden states $\{\mathbf{h}_1, \ldots, \mathbf{h}_L\}$. A temporal attention mechanism then learns a weighted summary of these states:
+\begin{align}
+ \mathbf{s}_i &= \tanh(W\mathbf{h}_i), \\
+ \alpha_i &= \frac{\exp(\mathbf{v}^\top \mathbf{s}_i)}{\sum_{j=1}^{L} \exp(\mathbf{v}^\top \mathbf{s}_j)}, \\
+ \mathbf{c} &= \sum_{i=1}^{L} \alpha_i \mathbf{h}_i.
+\end{align}
+
+The regression head outputs a one-step forecast $\hat{r}_{t+1}$ from the context vector $\mathbf{c}$. The predicted log return is converted back to a close-price forecast via exponential reconstruction:
+\begin{equation}
+ \hat{C}_{t+1} = C_t \cdot \exp(\hat{r}_{t+1}).
+\end{equation}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.95\textwidth]{image.png}
+\caption{Model architecture flowchart for the LSTM-based forecasting pipeline with temporal attention.}
+\label{fig:model_architecture}
+\end{figure*}
+
+Training uses the Adam optimizer with gradient clipping and \textbf{Huber loss} for robustness to outliers:
+\begin{equation}
+ \mathcal{L}_\delta(y,\hat{y}) =
+ \begin{cases}
+ \frac{1}{2}(y-\hat{y})^2, & |y-\hat{y}| \le \delta \\
+ \delta\left(|y-\hat{y}| - \frac{1}{2}\delta\right), & \text{otherwise.}
+ \end{cases}
+\end{equation}
+
+The reference implementation also supports an auxiliary direction head (up/down) to jointly learn magnitude and direction, but the core forecasting objective remains next-day log-return regression.
+
+\subsection{Train/Test Split and Training Protocol}
+
+Data are split \textbf{chronologically} with a train ratio typically between 0.80 and 0.85 depending on the run, and the remainder is held out for evaluation. During training, sequences are not shuffled (time-series constraint). Early stopping and learning-rate reduction callbacks are used to limit overfitting.
+
+\subsection{Evaluation Metrics}
+
+Predictions are evaluated after reconstruction into price space using RMSE, MAE, MAPE, and $R^2$. Directional accuracy (DA) is computed on the sign of returns:
+\begin{equation}
+ \text{DA} = \frac{1}{n}\sum_{i=1}^{n}\mathbb{1}[\operatorname{sign}(\hat{r}_i)=\operatorname{sign}(r_i)].
+\end{equation}
+
+\section{Implementation Details}
+
+This part explains how the implementation works so that the experiments can be done the same way every time. The whole process is done in Python using TensorFlow and Keras for building models, and common data tools for preparing the data. Historical data like open, high, low, close, and volume are gathered for each stock, cleaned up to make a daily list, and then turned into sequences for training using a set time window.
+
+To avoid problems with data leakage, steps like scaling are done only on the training part of each stock's data and then used on the validation and test parts. The training results include saved model files, setup details, and records of how well the model performed, so that the same files can be used later to recreate the results and graphs.
+
+The code also works on different systems, like a regular computer with a CPU or GPU, or a cloud service, and keeps the setup the same every time. In real use, this means clearly writing down all the model settings, features used, and how the data is split, and saving them with the model so that future runs can be compared properly.
+
+\subsection{Implementation Configuration}
+
+Table~\ref{tab:impl_config} (Table I) summarizes the specific setup used in the code that goes along with this work.
+
+\begin{table}[htbp]
+\caption{Implementation Configuration}
+\label{tab:impl_config}
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.42\columnwidth}p{0.52\columnwidth}@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Framework & TensorFlow (Keras) \\
+Data Libraries & yfinance, pandas, NumPy \\
+Preprocessing & MinMax scaling (0--1); sliding window sequences \\
+Feature Engineering & OHLCV + technical indicators (e.g., SMA/EMA, RSI, MACD, Bollinger Bands, ATR, OBV, ADX, Stochastic) \\
+Optimiser & Adam ($\eta = 3\times 10^{-4}$) with gradient clipping (clipnorm=1.0) \\
+Loss Function & Huber loss \\
+Epochs & Up to 200 (EarlyStopping, patience=25) \\
+Batch Size & 64 \\
+Look-back Window & 60 trading days \\
+LSTM Units & 256 (L1), 128 (L2), 64 (L3) \\
+Attention Units & Temporal self-attention over the final LSTM sequence (64-d context) \\
+Dropout Rate & 0.15 (with smaller head dropouts) \\
+Regularisation & L2 ($10^{-4}$) + BatchNorm + Dropout \\
+Hardware & CPU/GPU dependent (GPU optional; Colab workflow supported) \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Table I summarizes the specific setup used in the code that goes along with this work. In addition to the settings listed in Table I, each training session saves the scaling parameters, the final model weights, and a small file that notes which features were used and how far back in time the model looked for each stock. This allows us to exactly recreate the preprocessing and model state when we want to check results or make charts.
+
+To ensure results are reliable, the code keeps the train and test data in time order and records the training process, including loss values and when training stopped early. These records help make sure any improvements in accuracy are not because of inconsistent data handling, different time periods for testing, or accidental use of future data.
+
+\FloatBarrier
+
+\section{Results and Findings}
+
+\FloatBarrier
+
+\subsection{Experimental Setup Summary}
+
+Experiments follow the reference implementation described in the accompanying codebase: a stacked bidirectional LSTM with temporal attention trained on daily OHLCV features and engineered technical indicators (27 inputs), using a look-back window of 60 trading days and a one-step forecast horizon. The model predicts next-day log returns and is evaluated after reconstructing next-day close prices.
+
+\subsection{Out-of-Sample Performance on Representative Constituents}
+
+Table 2 reports hold-out performance from saved model artefacts for five trained NIFTY 50 constituents. RMSE/MAE/MAPE/$R^2$ are computed in reconstructed close-price space, while directional accuracy is computed on the sign of predicted vs. true log return.
+
+\begin{table}[H]
+\caption{Hold-out performance (Part I) on representative NIFTY 50 constituents: training setup and errors.}
+\label{tab:rep_results_a}
+\raggedright
+\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Ticker} & \textbf{Split} & \textbf{Epochs} & \textbf{RMSE} & \textbf{MAE} \\
+\midrule
+RELIANCE.NS  & 0.85 & 30 & 19.8176 & 15.1674 \\
+TCS.NS       & 0.85 & 30 & 45.2092 & 32.9511 \\
+HDFCBANK.NS  & 0.85 & 27 & 10.7257 & 8.0255  \\
+TITAN.NS     & 0.85 & 30 & 54.1553 & 38.7577 \\
+SBIN.NS      & 0.85 & 26 & 12.6991 & 8.8146  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\raggedright
+\includegraphics[width=\columnwidth]{Training Setup.png}
+\caption{Visualization of Table II (Part I): split, epochs, RMSE, and MAE.}
+\label{fig:table2_graph}
+\end{figure}
+
+\begin{table}[H]
+\caption{Hold-out performance (Part II) on representative NIFTY 50 constituents: percentage and directional metrics.}
+\label{tab:rep_results_b}
+\raggedright
+\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Ticker} & \textbf{MAPE (\%)} & \textbf{R$^2$} & \textbf{Dir.Acc} \\
+\midrule
+RELIANCE.NS  & 1.0990 & 0.9649 & 0.5241 \\
+TCS.NS       & 1.0365 & 0.9879 & 0.4910 \\
+HDFCBANK.NS  & 0.8865 & 0.9751 & 0.4699 \\
+TITAN.NS     & 1.0616 & 0.9767 & 0.4729 \\
+SBIN.NS      & 0.9908 & 0.9909 & 0.5181 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\raggedright
+\includegraphics[width=\columnwidth]{Percentage.png}
+\caption{Visualization of Table III (Part II): MAPE, $R^2$, and directional accuracy.}
+\label{fig:table3_graph}
+\end{figure}
+
+\subsection{Stock Training Metrics on Selected Constituents}
+
+Table IV reports directional classification metrics for selected NIFTY 50 constituents (generated on 2026-04-17). Precision, Recall, and F1 are computed on the up/down direction signal (positive class: ``up'').
+
+\begin{table}[H]
+\caption{Hold-out performance (Part IV) on representative NIFTY 50 constituents: classification metrics.}
+\label{tab:selected_stock_metrics_b}
+\raggedright
+\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Ticker} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1} \\
+\midrule
+RELIANCE.NS & 0.5398 & 0.3653 & 0.4357 \\
+TCS.NS & 0.4526 & 0.8671 & 0.5947 \\
+HDFCBANK.NS & 0.4699 & 1.0000 & 0.6393 \\
+TITAN.NS & 0.4671 & 0.4303 & 0.4479 \\
+SBIN.NS & 0.5181 & 1.0000 & 0.6825 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\raggedright
+\includegraphics[width=\columnwidth]{Training.png}
+\caption{Visualization of Table IV: Directional Classification Metrics (Precision, Recall, and F1).}
+\label{fig:table4_graph}
+\end{figure}
+
+\FloatBarrier
+
+\subsection{Discussion}
+
+Across the different stocks analyzed, the model shows a low percentage error (MAPE around 1--1.4\%) and high $R^2$ in the reconstructed close-price space, meaning the attention-enhanced sequence model can predict next-day prices fairly well. However, the accuracy in predicting the direction of price changes is not great (about 0.49 for RELIANCE.NS and 0.55 for TCS.NS), showing that even when the model is good at predicting how much the price will change, it still struggles to correctly predict whether the price will go up or down.
+
+\section{Conclusion}
+
+\subsection{Summary of Key Results}
+
+This work introduces a pipeline for NIFTY 50 forecasting that is aware of data leakage and predicts next-day log returns using a stacked bidirectional LSTM with temporal attention and exponential reconstruction. The results suggest that attention-enhanced sequence models work well for short-term forecasting when evaluated in a time-ordered way. The model can keep track of price levels on main stocks well, but predicting the direction of price moves is still difficult, which shows the need for clear directional goals and careful evaluation.
+
+\subsection{Practical Impacts and Limitations}
+
+Temporal attention provides a clear signal about which time periods in the 60-day look-back window are most influential and can help with analyzing the reasons behind the model’s predictions. However, the study looks only at representative stocks, doesn’t include formal tests of different parts of the model, and depends on a single time-ordered test split. More thorough validation and metrics that consider actual trading are needed for making real-world decisions. These issues should be kept in mind when applying the findings to real-world applications.
+
+\section{Future Work}
+
+\subsection{Immediate Improvements}
+
+Evaluate all 50 NIFTY stocks with overall statistics, add simple comparison models, and run tests to see how much attention and bidirectionality contribute to the model’s performance. Report validation curves and how sensitive the model is to the length of the look-back period ($L$), and test other timeframes (like 3--5 days) to see if the model is stable beyond just next-day predictions.
+
+\subsection{New Features and Data Sources}
+
+Add external data like USD--INR exchange rates, India VIX, crude oil prices, and sector-specific indices to check if these macroeconomic factors help predict the direction of returns better. Include features based on events (such as earnings reports or RBI announcements) and explore ways to select important features or use learned embeddings to reduce noise.
+
+\subsection{Deployment and Economic Assessment}
+
+Implement ongoing retraining, detect model drift, and use lightweight backtesting with realistic transaction costs and slippage to understand how well the model’s statistical accuracy translates into real gains. Future work should also include risk-adjusted performance measures and basic rules for deciding how much to invest to assess the practical viability of the model.
+
+\begin{thebibliography}{00}
+
+\bibitem{b1} H. N. Bhandari, B. Rimal, N. R. Pokhrel, R. Rimal, K. R. Dahal, and R. K. Khatri, ``Predicting stock market index using LSTM,'' \textit{Machine Learning with Applications}, vol. 9, pp. 100320, 2022.
+
+\bibitem{b3} A. Ghosh, S. Bose, G. Maji, N. C. Debnath, and S. Sen, ``Stock price prediction using LSTM on Indian share market,'' in \textit{Proc. 32nd Int. Conf. Computer Applications Industry Engineering}, 2019, pp. 101--110.
+
+\bibitem{b4} S. Hochreiter and J. Schmidhuber, ``Long short-term memory,'' \textit{Neural Computation}, vol. 9, no. 8, pp. 1735--1780, 1997.
+
+\bibitem{b5} K. C. Ling, L. K. Yong, M. C. Fong, and L. W. Kit, ``Predicting stock prices using long short-term memory,'' in \textit{Proc. 2017 Int. Conf. Computing, Communication, Control Technology}, 2017.
+
+\bibitem{b6} A. Moghar and M. Hamiche, ``Stock market prediction using LSTM recurrent neural network,'' \textit{Procedia Computer Science}, vol. 170, pp. 1168--1173, 2020.
+
+\bibitem{b7} D. M. Nelson, A. C. Pereira, and R. A. de Oliveira, ``Stock market's price movement prediction with LSTM neural networks,'' in \textit{Proc. 2017 Int. Joint Conf. Neural Networks}, 2017, pp. 1419--1426.
+
+\bibitem{b8} M. Roondiwala, H. Patel, and S. Varma, ``Predicting stock prices using LSTM,'' \textit{Int. Journal of Science and Research}, vol. 6, no. 4, pp. 1754--1756, 2017.
+
+\bibitem{b9} R. Zhang, ``LSTM-based stock prediction modeling and analysis,'' in \textit{Proc. 2022 7th Int. Conf. Financial Innovation Economic Development}, 2022, pp. 2537--2542.
+
+\bibitem{b10} S. Selvin, R. Vinayakumar, E. A. Gopalakrishnan, and K. P. Soman, ``Stock price prediction using LSTM, RNN and CNN-sliding window model,'' in \textit{Proc. Int. Conf. Syst., Computation, Automation and Networking (ICSCA)}, 2017, pp. 164--167.
+
+\bibitem{b11} R. Chaudhary \textit{et al.}, ``Advanced stock market prediction using long short-term memory (LSTM) networks with sentiment analysis,'' arXiv:2505.05325, 2025.
+
+\bibitem{b12} M. Nabipour \textit{et al.}, ``Deep learning for stock market prediction,'' \textit{Entropy}, vol. 22, no. 8, p. 840, 2020.
+
+\bibitem{b13} K. A. Althelaya, E.-S. M. El-Alfy, and S. Mohammed, ``Evaluation of bidirectional LSTM for short- and long-term stock market prediction,'' in \textit{Proc. 9th Int. Conf. Information and Communication Systems (ICICS)}, 2018.
+
+\bibitem{b14} R. RishiRajak, ``Share price prediction using RNN and LSTM,'' \textit{Analytics Vidhya}, 2020.
+
+\bibitem{b15} L. Zhenglin \textit{et al.}, ``Innovative applications in engineering and technology,'' \textit{Innov. Appl. Eng. Technol.}, vol. 2, no. 1, 2023.
+
+\bibitem{b16} X. Cui \textit{et al.}, ``Stock market prediction using recurrent neural network and LSTM,'' \textit{Kronika Journal}, 2025.
+
+\bibitem{b17} ``Stock market analysis and prediction using LSTM,'' \textit{Int. Adv. Eng. Technol.}, 2024.
+
+\bibitem{b18} ``A study on stock price prediction using LSTM and RNN,'' \textit{Int. J. Formal Methods}, 2024.
+
+\bibitem{b19} ``Predicting the U.S. stock market index using LSTM,'' \textit{SCITEPRESS}, 2024.
+
+\bibitem{b20} ``LSTM price movement prediction for stock market,'' \textit{Granthaalayah}, 2025.
+
+\bibitem{b21} ``Predicting stock market trends using long short-term memory (LSTM) networks,'' in \textit{Proc. IEEE ICSSES}, 2025.
+
+\bibitem{b22} ``Stock price analysis using LSTM \& Bi-LSTM,'' \textit{Kronika Journal}, 2025.
+
+\end{thebibliography}
+
+\end{document}
