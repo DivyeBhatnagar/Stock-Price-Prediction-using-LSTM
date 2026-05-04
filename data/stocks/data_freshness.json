@@ -1,0 +1,16 @@
+{
+  "freshness": {
+    "RELIANCE.NS": {
+      "ticker": "RELIANCE.NS",
+      "last_updated": "2026-04-16T16:12:48.459637",
+      "latest_date": "2026-04-16",
+      "total_rows": 2470,
+      "gaps_filled": 0,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 1
+    }
+  },
+  "watchlist": [],
+  "saved_at": "2026-04-16T16:12:48.459693"
+}

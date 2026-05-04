@@ -22,7 +22,7 @@ from tensorflow.keras.layers import (
     LSTM, Dense, Dropout, BatchNormalization,
     Bidirectional, MultiHeadAttention, LayerNormalization,
     GlobalAveragePooling1D, Reshape, Multiply, Permute,
-    Flatten, Lambda, Attention
+    Flatten, Lambda, Attention, Conv1D, MaxPooling1D
 )
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import (
@@ -32,6 +32,21 @@ from tensorflow.keras.regularizers import l2
 import tensorflow.keras.backend as K
 from typing import Tuple, Optional
 import os
+
+
+def _binary_focal_loss(alpha: float = 0.6, gamma: float = 2.0):
+    """
+    Binary focal loss to address class imbalance and focus on hard examples.
+    """
+    def loss(y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.clip_by_value(y_pred, K.epsilon(), 1.0 - K.epsilon())
+        p_t = y_true * y_pred + (1.0 - y_true) * (1.0 - y_pred)
+        alpha_factor = y_true * alpha + (1.0 - y_true) * (1.0 - alpha)
+        modulating_factor = tf.pow(1.0 - p_t, gamma)
+        return tf.reduce_mean(-alpha_factor * modulating_factor * tf.math.log(p_t))
+
+    return loss
 
 
 # ─────────────────────────────────────────────
@@ -77,6 +92,11 @@ def build_lstm_model(
     learning_rate: float = 1e-3,
     use_attention: bool = True,
     use_bidirectional: bool = False,
+    use_multi_task: bool = True,
+    output_mode: Optional[str] = None,
+    use_cnn: bool = False,
+    cnn_filters: Tuple[int, ...] = (64, 32),
+    cnn_kernel_size: int = 3,
 ) -> Model:
     """
     Build and compile the LSTM model.
@@ -98,6 +118,15 @@ def build_lstm_model(
     """
     inputs = Input(shape=(window_size, n_features), name="price_input")
     x = inputs
+
+    # ── Optional CNN Front-End ────────────────
+    if use_cnn:
+        for i, filters in enumerate(cnn_filters):
+            x = Conv1D(filters, kernel_size=cnn_kernel_size, activation="relu", padding="same",
+                       name=f"conv1d_{i+1}")(x)
+            x = BatchNormalization(name=f"conv_bn_{i+1}")(x)
+            x = MaxPooling1D(pool_size=2, name=f"conv_pool_{i+1}")(x)
+            x = Dropout(dropout_rate / 2, name=f"conv_dropout_{i+1}")(x)
 
     # ── LSTM Stack ────────────────────────────
     for i, units in enumerate(lstm_units):
@@ -134,17 +163,62 @@ def build_lstm_model(
     x = Dense(64, activation="relu", kernel_regularizer=l2(1e-4), name="dense_2")(x)
     x = Dropout(dropout_rate / 4, name="dropout_head2")(x)
 
-    # Output: predict `forecast_horizon` scaled Close prices
-    outputs = Dense(forecast_horizon, activation="linear", name="output")(x)
+    if output_mode is None:
+        output_mode = "multi" if use_multi_task else "regression"
+
+    if output_mode == "direction":
+        direction_output = Dense(1, activation="sigmoid", name="direction_output")(x)
+        outputs = direction_output
+    else:
+        # Output: predict `forecast_horizon` scaled Close prices
+        price_output = Dense(forecast_horizon, activation="linear", name="price_output")(x)
+        if output_mode == "multi":
+            direction_output = Dense(1, activation="sigmoid", name="direction_output")(x)
+            outputs = [price_output, direction_output]
+        else:
+            outputs = price_output
 
     model = Model(inputs, outputs, name="StockLSTM")
 
     # ── Compile ───────────────────────────────
-    model.compile(
-        optimizer=Adam(learning_rate=learning_rate, clipnorm=1.0),
-        loss="huber",           # Huber loss is robust to outliers
-        metrics=["mae"]
-    )
+    if output_mode == "multi":
+        model.compile(
+            optimizer=Adam(learning_rate=learning_rate, clipnorm=1.0),
+            loss={
+                "price_output": "huber",
+                "direction_output": _binary_focal_loss(alpha=0.6, gamma=2.0),
+            },
+            loss_weights={
+                "price_output": 1.0,
+                "direction_output": 0.7,
+            },
+            metrics={
+                "price_output": ["mae"],
+                "direction_output": [
+                    "accuracy",
+                    tf.keras.metrics.AUC(name="auc"),
+                    tf.keras.metrics.Precision(name="precision"),
+                    tf.keras.metrics.Recall(name="recall"),
+                ],
+            },
+        )
+    elif output_mode == "direction":
+        model.compile(
+            optimizer=Adam(learning_rate=learning_rate, clipnorm=1.0),
+            loss=_binary_focal_loss(alpha=0.6, gamma=2.0),
+            metrics=[
+                "accuracy",
+                tf.keras.metrics.AUC(name="auc"),
+                tf.keras.metrics.Precision(name="precision"),
+                tf.keras.metrics.Recall(name="recall"),
+            ],
+        )
+    else:
+        model.compile(
+            optimizer=Adam(learning_rate=learning_rate, clipnorm=1.0),
+            loss="huber",           # Huber loss is robust to outliers
+            metrics=["mae"]
+        )
 
     model.summary()
     return model
@@ -222,7 +296,10 @@ def load_model(path: str) -> Model:
     """Load a saved Keras model, registering custom layers."""
     model = tf.keras.models.load_model(
         path,
-        custom_objects={"TemporalAttention": TemporalAttention}
+        custom_objects={
+            "TemporalAttention": TemporalAttention,
+            "loss": _binary_focal_loss(alpha=0.6, gamma=2.0),
+        }
     )
     print(f"[Model] Loaded ← {path}")
     return model

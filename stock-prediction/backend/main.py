@@ -20,6 +20,9 @@ import json
 import time
 import asyncio
 import logging
+import numpy as np
+import pandas as pd
+import glob
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
@@ -27,6 +30,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, WebSocket, W
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+import yfinance as yf
 
 # ─── project imports ─────────────────────────
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
@@ -138,10 +142,26 @@ def _training_task(req: TrainRequest):
     import argparse
     from data_pipeline import normalize_ticker, DEFAULT_START_DATE
     ticker = normalize_ticker(req.ticker)
-    training_status[ticker] = {"status": "running", "started_at": time.time()}
+    training_status[ticker] = {
+        "status": "running",
+        "started_at": time.time(),
+        "epochs_total": req.epochs,
+        "epoch": 0,
+    }
 
     try:
-        from train import train
+        from train import train, PROGRESS_CALLBACK
+
+        def _progress(epoch, total, logs):
+            training_status[ticker].update({
+                "epoch": epoch,
+                "epochs_total": total,
+                "loss": float(logs.get("loss", 0.0)) if logs else None,
+                "val_loss": float(logs.get("val_loss", 0.0)) if logs else None,
+            })
+
+        import train as train_module
+        train_module.PROGRESS_CALLBACK = _progress
 
         class _Args:
             ticker       = req.ticker   # train() will call normalize_ticker itself
@@ -154,14 +174,32 @@ def _training_task(req: TrainRequest):
             dropout      = req.dropout
             attention    = req.attention
             bidir        = req.bidirectional
+            single_task  = False
             split        = 0.80
             output       = MODEL_DIR
+            val_ratio    = 0.10
+            direction_only = False
+            direction_bigmove = False
+            direction_threshold = 0.0
+            scale        = "minmax"
+            lstm_units   = "256,128,64"
+            cnn          = False
+            walk_forward = False
+            wf_splits    = 3
+            wf_embargo   = 5
+            wf_min_train = 300
+            threshold_objective = "sharpe"
+            transaction_cost = 0.0005
+            allow_short  = False
+            strict_no_lookahead = False
 
         result = train(_Args())
         training_status[ticker] = {
             "status":   "completed",
             "metrics":  result["metrics"],
             "duration": round(time.time() - training_status[ticker]["started_at"], 1),
+            "epoch": training_status[ticker].get("epoch", req.epochs),
+            "epochs_total": req.epochs,
         }
         log.info(f"[{ticker}] Training completed. Metrics: {result['metrics']}")
 
@@ -206,10 +244,13 @@ def get_stock_data(
             df = load_raw_data(ticker, data_dir=DATA_DIR)
         except FileNotFoundError:
             df = fetch_stock_data(ticker, start=start, end=end,
-                                  save_dir=data_dir, incremental=False)
+                                  save_dir=DATA_DIR, incremental=False)
 
         if indicators:
             df = add_technical_indicators(df)
+
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.astype(object).where(pd.notnull(df), None)
 
         df.index = df.index.strftime("%Y-%m-%d")
         records = df.reset_index().rename(columns={"index": "date", "Date": "date"}).to_dict("records")
@@ -224,6 +265,42 @@ def get_stock_data(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         log.error(f"get_stock_data error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stock/info/{ticker}", tags=["Data"])
+def get_stock_info(ticker: str):
+    """Fetch stock fundamentals like market cap, PE, etc."""
+    ticker = _normalize(ticker)
+    try:
+        info = yf.Ticker(ticker).info or {}
+
+        def _clean(value):
+            if value is None:
+                return None
+            if isinstance(value, (float, int)):
+                if value != value or value in (float("inf"), float("-inf")):
+                    return None
+                return float(value)
+            return value
+
+        payload = {
+            "ticker": ticker,
+            "name": info.get("shortName") or info.get("longName") or ticker,
+            "marketCap": _clean(info.get("marketCap")),
+            "peRatio": _clean(info.get("trailingPE")),
+            "forwardPE": _clean(info.get("forwardPE")),
+            "priceToBook": _clean(info.get("priceToBook")),
+            "dividendYield": _clean(info.get("dividendYield")),
+            "beta": _clean(info.get("beta")),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "website": info.get("website"),
+            "currency": info.get("currency"),
+        }
+        return payload
+    except Exception as e:
+        log.error(f"get_stock_info error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -254,10 +331,19 @@ def train_model(req: TrainRequest, background_tasks: BackgroundTasks):
 @app.get("/api/train/status/{ticker}", tags=["Model"])
 def training_status_check(ticker: str):
     """Check the status of an ongoing or completed training job."""
-    status = training_status.get(ticker.upper())
+    ticker = _normalize(ticker)
+    status = training_status.get(ticker)
     if status is None:
-        raise HTTPException(status_code=404, detail=f"No training job found for {ticker.upper()}")
-    return {"ticker": ticker.upper(), **status}
+        raise HTTPException(status_code=404, detail=f"No training job found for {ticker}")
+    return {"ticker": ticker, **status}
+
+
+@app.get("/api/data/tickers", tags=["Live Data"])
+def list_data_tickers():
+    """List tickers that have local CSV data available."""
+    pattern = os.path.join(DATA_DIR, "*.csv")
+    tickers = [os.path.splitext(os.path.basename(p))[0] for p in glob.glob(pattern)]
+    return {"tickers": sorted(tickers)}
 
 
 # ── GET /api/predict/{ticker} ─────────────────

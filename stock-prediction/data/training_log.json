@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-04-16T16:15:12.143469",
+  "total": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "elapsed_sec": 157.0,
+  "config": {
+    "window": 60,
+    "horizon": 1,
+    "epochs": 50,
+    "batch": 32
+  },
+  "results": [
+    {
+      "ticker": "RELIANCE.NS",
+      "name": "Reliance Industries",
+      "sector": "Energy / Conglomerate",
+      "status": "success",
+      "metrics": {
+        "rmse": 19.3822,
+        "mae": 14.1335,
+        "mape": 1.0195,
+        "r2": 0.965,
+        "directional_accuracy": 0.4884
+      },
+      "rows": 2470,
+      "duration_sec": 149.2
+    }
+  ]
+}

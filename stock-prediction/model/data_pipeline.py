@@ -17,7 +17,7 @@ import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 from typing import Tuple, Optional
 from datetime import datetime, timedelta
 import joblib
@@ -259,9 +259,13 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     # ── Moving Averages ──────────────────────
-    df["SMA_20"] = df["Close"].rolling(20).mean()
-    df["SMA_50"] = df["Close"].rolling(50).mean()
-    df["EMA_20"] = df["Close"].ewm(span=20, adjust=False).mean()
+    df["SMA_10"]  = df["Close"].rolling(10).mean()
+    df["SMA_20"]  = df["Close"].rolling(20).mean()
+    df["SMA_50"]  = df["Close"].rolling(50).mean()
+    df["SMA_200"] = df["Close"].rolling(200).mean()
+    df["EMA_10"]  = df["Close"].ewm(span=10, adjust=False).mean()
+    df["EMA_20"]  = df["Close"].ewm(span=20, adjust=False).mean()
+    df["EMA_50"]  = df["Close"].ewm(span=50, adjust=False).mean()
 
     # ── RSI ──────────────────────────────────
     delta = df["Close"].diff()
@@ -292,6 +296,17 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # ── Daily Returns ─────────────────────────
     df["Return"] = df["Close"].pct_change()
 
+    # ── Multi-horizon Returns / Momentum ──────
+    df["Return_5"]  = df["Close"].pct_change(5)
+    df["Return_10"] = df["Close"].pct_change(10)
+    df["Return_20"] = df["Close"].pct_change(20)
+    df["MOM_10"] = df["Close"].diff(10)
+    df["ROC_10"] = df["Close"].pct_change(10)
+
+    # ── Volatility (rolling) ──────────────────
+    df["Volatility_10"] = df["Return"].rolling(10).std()
+    df["Volatility_20"] = df["Return"].rolling(20).std()
+
     # ── Volume Indicators ─────────────────────
     df["Vol_SMA20"] = df["Volume"].rolling(20).mean()
     df["Vol_Ratio"] = df["Volume"] / (df["Vol_SMA20"] + 1e-10)
@@ -313,6 +328,10 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["Price_SMA20_Ratio"] = df["Close"] / (df["SMA_20"] + 1e-10) - 1
     df["Price_SMA50_Ratio"] = df["Close"] / (df["SMA_50"] + 1e-10) - 1
 
+    # ── Trend Strength ────────────────────────
+    df["Trend_5_20"]  = df["SMA_20"] / (df["SMA_50"] + 1e-10) - 1
+    df["Trend_20_50"] = df["EMA_20"] / (df["SMA_50"] + 1e-10) - 1
+
     # ── Log Return ────────────────────────────
     df["Log_Return"] = np.log(df["Close"] / df["Close"].shift(1).clip(lower=1e-10))
 
@@ -332,6 +351,91 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     _di_m = 100 * pd.Series(_dm_m, index=df.index).ewm(alpha=1/14, adjust=False).mean() / (_atr + 1e-10)
     _dx   = 100 * (_di_p - _di_m).abs() / (_di_p + _di_m + 1e-10)
     df["ADX"] = _dx.ewm(alpha=1/14, adjust=False).mean()
+
+    return df
+
+
+def add_lag_features(df: pd.DataFrame, close_lags: int = 10, return_lags: int = 5) -> pd.DataFrame:
+    """Add lagged Close and Return features."""
+    df = df.copy()
+    for lag in range(1, close_lags + 1):
+        df[f"Close_Lag_{lag}"] = df["Close"].shift(lag)
+    for lag in range(1, return_lags + 1):
+        df[f"Return_Lag_{lag}"] = df["Return"].shift(lag)
+    return df
+
+
+def add_rolling_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """Add rolling statistics for Close and Volume."""
+    df = df.copy()
+    df["Close_Roll_Mean_10"] = df["Close"].rolling(10).mean()
+    df["Close_Roll_Mean_20"] = df["Close"].rolling(20).mean()
+    df["Close_Roll_Mean_50"] = df["Close"].rolling(50).mean()
+    df["Close_Roll_Std_10"] = df["Close"].rolling(10).std()
+    df["Close_Roll_Std_20"] = df["Close"].rolling(20).std()
+    df["Volume_Roll_Mean_20"] = df["Volume"].rolling(20).mean()
+    return df
+
+
+def clean_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Handle missing/inf values in engineered features with light outlier control."""
+    df = df.replace([np.inf, -np.inf], np.nan)
+
+    # Winsorize heavy-tailed return features to reduce noise from extreme outliers.
+    for col in ["Return", "Return_5", "Return_10", "Return_20", "Log_Return"]:
+        if col in df.columns:
+            q_low, q_hi = df[col].quantile([0.005, 0.995])
+            df[col] = df[col].clip(lower=q_low, upper=q_hi)
+
+    df = df.ffill()
+    df = df.dropna()
+    return df
+
+
+def shift_feature_columns(df: pd.DataFrame, feature_cols: list, periods: int = 1) -> pd.DataFrame:
+    """
+    Shift selected feature columns forward in time (useful for strict no-look-ahead setups).
+
+    Example: if predicting at market open for day t, shift end-of-day derived features by 1.
+    """
+    df = df.copy()
+    for col in feature_cols:
+        if col in df.columns:
+            df[col] = df[col].shift(periods)
+    return df
+
+
+def add_external_signals(df: pd.DataFrame, start: str = None) -> pd.DataFrame:
+    """
+    Add external market signals (indices, FX, crude) aligned to the stock dates.
+    """
+    df = df.copy()
+    if start is None:
+        start = DEFAULT_START_DATE
+
+    tickers = {
+        "NIFTY": "^NSEI",
+        "BANKNIFTY": "^NSEBANK",
+        "SENSEX": "^BSESN",
+        "USDINR": "INR=X",
+        "CRUDE": "CL=F",
+    }
+
+    for name, tkr in tickers.items():
+        try:
+            ext = yf.download(tkr, start=start, progress=False)
+            if ext.empty:
+                continue
+            if isinstance(ext.columns, pd.MultiIndex):
+                ext.columns = ext.columns.get_level_values(0)
+            ext = ext[["Close"]].rename(columns={"Close": f"{name}_Close"})
+            ext = ext.reindex(df.index).ffill()
+            df[f"{name}_Return"] = ext[f"{name}_Close"].pct_change().fillna(0.0)
+            df[f"{name}_SMA20_Ratio"] = (
+                ext[f"{name}_Close"].rolling(20).mean() / (ext[f"{name}_Close"] + 1e-10) - 1
+            ).fillna(0.0)
+        except Exception as e:
+            print(f"[DataPipeline] External signal '{tkr}' skipped: {e}")
 
     df.dropna(inplace=True)
     return df
@@ -432,6 +536,63 @@ def create_sequences(
     return X, y
 
 
+def create_sequences_direction(
+    data: np.ndarray,
+    window_size: int = 60,
+    target_col_idx: int = 3,
+    forecast_horizon: int = 1,
+    direction_threshold: float = 0.0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Build (X, y) pairs where y is a binary direction label.
+
+    The label is 1 if the future target value exceeds the current target
+    by more than the threshold, else 0.
+    """
+    X, y = [], []
+    total = len(data)
+
+    for i in range(window_size, total - forecast_horizon + 1):
+        X.append(data[i - window_size: i, :])
+        current = data[i - 1, target_col_idx]
+        future = data[i + forecast_horizon - 1, target_col_idx]
+        y.append(1.0 if (future - current) > direction_threshold else 0.0)
+
+    X = np.array(X)
+    y = np.array(y).reshape(-1, 1)
+    print(f"[DataPipeline] Direction sequences: X={X.shape}  y={y.shape}")
+    return X, y
+
+
+def create_direction_labels(
+    log_returns: np.ndarray,
+    window_size: int,
+    forecast_horizon: int,
+    direction_threshold: float = 0.0,
+    big_move_only: bool = False,
+) -> Tuple[np.ndarray, np.ndarray, float]:
+    """
+    Create direction labels using cumulative log returns over the horizon.
+    Returns labels and indices kept; coverage is fraction kept.
+    """
+    labels = []
+    indices = []
+    total = len(log_returns)
+
+    for i in range(window_size, total - forecast_horizon + 1):
+        future = np.sum(log_returns[i: i + forecast_horizon])
+        if big_move_only and abs(future) <= direction_threshold:
+            continue
+        label = 1.0 if future > direction_threshold else 0.0
+        labels.append(label)
+        indices.append(i - window_size)
+
+    labels = np.array(labels).reshape(-1, 1)
+    indices = np.array(indices)
+    coverage = len(labels) / max(1, (total - window_size - forecast_horizon + 1))
+    return labels, indices, coverage
+
+
 # ─────────────────────────────────────────────
 # 5. TRAIN / TEST SPLIT
 # ─────────────────────────────────────────────
@@ -461,17 +622,33 @@ def split_data(
 
 FEATURE_COLS = [
     "Open", "High", "Low", "Close", "Volume",
-    "SMA_20", "SMA_50", "EMA_20",
+    "SMA_10", "SMA_20", "SMA_50", "SMA_200",
+    "EMA_10", "EMA_20", "EMA_50",
     "RSI", "MACD", "MACD_Signal",
     "BB_Upper", "BB_Lower", "BB_Width",
     "ATR", "Return",
+    "Return_5", "Return_10", "Return_20",
+    "MOM_10", "ROC_10",
+    "Volatility_10", "Volatility_20",
     # Extended features
     "Vol_SMA20", "Vol_Ratio",
     "STOCH_K", "STOCH_D",
     "Williams_R", "CCI",
     "Price_SMA20_Ratio", "Price_SMA50_Ratio",
+    "Trend_5_20", "Trend_20_50",
     "Log_Return", "OBV",
     "ADX",
+    "Close_Roll_Mean_10", "Close_Roll_Mean_20", "Close_Roll_Mean_50",
+    "Close_Roll_Std_10", "Close_Roll_Std_20",
+    "Volume_Roll_Mean_20",
+    "Close_Lag_1", "Close_Lag_2", "Close_Lag_3", "Close_Lag_4", "Close_Lag_5",
+    "Close_Lag_6", "Close_Lag_7", "Close_Lag_8", "Close_Lag_9", "Close_Lag_10",
+    "Return_Lag_1", "Return_Lag_2", "Return_Lag_3", "Return_Lag_4", "Return_Lag_5",
+    "NIFTY_Return", "NIFTY_SMA20_Ratio",
+    "BANKNIFTY_Return", "BANKNIFTY_SMA20_Ratio",
+    "SENSEX_Return", "SENSEX_SMA20_Ratio",
+    "USDINR_Return", "USDINR_SMA20_Ratio",
+    "CRUDE_Return", "CRUDE_SMA20_Ratio",
 ]
 CLOSE_COL_IDX     = FEATURE_COLS.index("Close")       # = 3
 LOG_RETURN_COL_IDX = FEATURE_COLS.index("Log_Return")  # stationary target
@@ -483,7 +660,11 @@ def build_pipeline(
     forecast_horizon: int = 1,
     split_ratio: float = 0.80,
     start_date: str = None,
-    scaler_save_path: Optional[str] = None
+    scaler_save_path: Optional[str] = None,
+    target_mode: str = "regression",
+    direction_threshold: float = 0.0,
+    scale_method: str = "minmax",
+    strict_no_lookahead: bool = False,
 ) -> dict:
     """
     End-to-end pipeline: fetch → engineer → scale → sequence → split.
@@ -499,20 +680,44 @@ def build_pipeline(
         start_date = DEFAULT_START_DATE
 
     # Step 1 – Fetch
-    df_raw = fetch_stock_data(ticker, start=start_date)
+    # During training, prefer direct download/cache path to avoid long
+    # incremental gap-filling delays that can stall experiments.
+    df_raw = fetch_stock_data(ticker, start=start_date, incremental=False)
 
     # Step 2 – Feature Engineering
     df_feat = add_technical_indicators(df_raw)
+    df_feat = add_lag_features(df_feat, close_lags=10, return_lags=5)
+    df_feat = add_rolling_stats(df_feat)
+    df_feat = add_external_signals(df_feat, start=start_date)
+    df_feat = clean_feature_frame(df_feat)
+
+    # Optional strict no-look-ahead mode: shift all model features by one bar.
+    # Keep labels based on unshifted future log returns from original timeline.
+    if strict_no_lookahead:
+        shift_cols = [c for c in FEATURE_COLS if c != "Log_Return"]
+        df_feat = shift_feature_columns(df_feat, shift_cols, periods=1)
+        df_feat = clean_feature_frame(df_feat)
 
     # Step 3 – Scale (fit ONLY on training portion — no future leakage)
     data    = df_feat[FEATURE_COLS].values
     n_train = int(len(data) * split_ratio)
 
+    scaler = None
     if scaler_save_path and os.path.exists(scaler_save_path):
         scaler = joblib.load(scaler_save_path)
-        print(f"[DataPipeline] Loaded existing scaler from {scaler_save_path}")
-    else:
-        scaler = MinMaxScaler(feature_range=(0, 1))
+        if hasattr(scaler, "n_features_in_") and scaler.n_features_in_ != data.shape[1]:
+            print("[DataPipeline] Feature count changed — refitting scaler.")
+            scaler = None
+        else:
+            print(f"[DataPipeline] Loaded existing scaler from {scaler_save_path}")
+
+    if scaler is None:
+        if scale_method == "standard":
+            scaler = StandardScaler()
+        elif scale_method == "robust":
+            scaler = RobustScaler()
+        else:
+            scaler = MinMaxScaler(feature_range=(0, 1))
         scaler.fit(data[:n_train])          # ← fit on train only
         if scaler_save_path:
             os.makedirs(os.path.dirname(scaler_save_path), exist_ok=True)
@@ -520,11 +725,30 @@ def build_pipeline(
             print(f"[DataPipeline] Scaler saved → {scaler_save_path}")
     scaled = scaler.transform(data)
 
-    # Step 4 – Windowing (target = next-day log return — stationary signal)
-    X, y = create_sequences(scaled, window_size, LOG_RETURN_COL_IDX, forecast_horizon)
+    # Step 4 – Windowing
+    # Always build a return target stream aligned with X to support
+    # threshold tuning and trading-metric evaluation.
+    X_all, y_returns_all = create_sequences(scaled, window_size, LOG_RETURN_COL_IDX, forecast_horizon)
+
+    if target_mode in ("direction", "direction_bigmove"):
+        labels, indices, coverage = create_direction_labels(
+            df_feat["Log_Return"].values,
+            window_size,
+            forecast_horizon,
+            direction_threshold,
+            big_move_only=(target_mode == "direction_bigmove"),
+        )
+        X = X_all[indices]
+        y_returns = y_returns_all[indices]
+        y = labels
+    else:
+        # target = next-day log return — stationary signal
+        X, y = X_all, y_returns_all
+        y_returns = y_returns_all
 
     # Step 5 – Split
     X_train, X_test, y_train, y_test = split_data(X, y, split_ratio)
+    _, _, y_return_train, y_return_test = split_data(X, y_returns, split_ratio)
 
     # Previous-close prices for each test sample (needed to reconstruct prices from log returns)
     n_train_seqs = len(X_train)
@@ -538,12 +762,15 @@ def build_pipeline(
         "X_test":           X_test,
         "y_train":          y_train,
         "y_test":           y_test,
+        "y_return_train":   y_return_train,
+        "y_return_test":    y_return_test,
         "scaler":           scaler,
         "feature_cols":     FEATURE_COLS,
         "close_col_idx":    CLOSE_COL_IDX,
         "df_raw":           df_raw,
         "df_featured":      df_feat,
         "test_prev_closes": test_prev_closes,
+        "coverage":         coverage if target_mode in ("direction", "direction_bigmove") else None,
     }
 
 

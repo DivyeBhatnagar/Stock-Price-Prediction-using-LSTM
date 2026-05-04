@@ -11,6 +11,8 @@ build/
 env/
 venv/
 .env
+credentials.json
+token.json
 
 # ── TensorFlow / Model artefacts ─────────────────────
 backend/models/*/model.keras

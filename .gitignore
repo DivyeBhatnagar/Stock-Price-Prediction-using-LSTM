@@ -1,6 +1,7 @@
 # .gitignore
 # Python
 .venv/
+.venv*/
 __pycache__/
 *.pyc
 *.pyo
@@ -17,6 +18,16 @@ stock-prediction/data/raw/
 stock-prediction/data/processed/
 
 # Node
+node_modules/
+
+# Runtime
+stock-prediction/.run/
+
+# Secrets / local creds
+credentials.json
+token.json
+stock-prediction/credentials.json
+stock-prediction/token.json
 
 # OS
 .DS_Store

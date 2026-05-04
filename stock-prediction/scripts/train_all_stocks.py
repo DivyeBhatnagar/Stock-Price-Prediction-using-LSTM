@@ -128,7 +128,8 @@ def train_stock(ticker: str, args) -> dict:
         lr             = args.lr
         dropout        = args.dropout
         attention      = True
-        bidir          = False
+        bidir          = True
+        single_task    = False
         split          = 0.80
         output         = MODEL_DIR
 
