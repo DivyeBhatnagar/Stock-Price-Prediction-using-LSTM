@@ -1,7 +1,7 @@
 """
 update_data_to_today.py
 =======================
-Update all stock data to today's date (April 10, 2026) with simulated realistic data.
+Update all stock data to today's date with simulated realistic data.
 This uses the existing data pattern to generate forward projections.
 """
 
@@ -14,7 +14,7 @@ import glob
 
 # ── config ───────────────────────────────
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data", "stocks")
-TODAY = datetime(2026, 4, 10)
+TODAY = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
 def get_last_date(csv_path):
     """Get the last date from a CSV file."""

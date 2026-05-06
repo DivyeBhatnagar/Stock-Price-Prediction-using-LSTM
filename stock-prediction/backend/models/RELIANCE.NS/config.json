@@ -76,9 +76,9 @@
     "CRUDE_Return",
     "CRUDE_SMA20_Ratio"
   ],
-  "split_ratio": 0.85,
+  "split_ratio": 0.8,
   "val_ratio": 0.1,
-  "scale_method": "standard",
+  "scale_method": "minmax",
   "lstm_units": [
     256,
     128,
@@ -87,33 +87,45 @@
   "cnn": false,
   "walk_forward": false,
   "wf_splits": 3,
+  "wf_embargo": 5,
+  "wf_min_train": 300,
   "multi_task": true,
-  "epochs_trained": 30,
+  "threshold_objective": "sharpe",
+  "transaction_cost": 0.0005,
+  "allow_short": false,
+  "strict_no_lookahead": false,
+  "epochs_trained": 20,
   "metrics": {
-    "rmse": 19.8176,
-    "mae": 15.1674,
-    "mape": 1.099,
-    "r2": 0.9649,
-    "directional_accuracy": 0.5241,
-    "directional_accuracy_regression": 0.488,
-    "precision": 0.5398,
-    "recall": 0.3653,
-    "f1": 0.4357,
+    "rmse": 18.3916,
+    "mae": 13.7276,
+    "mape": 0.9647,
+    "r2": 0.9288,
+    "directional_accuracy": 0.4847,
+    "directional_accuracy_regression": 0.4541,
+    "precision": 0.4889,
+    "recall": 0.4444,
+    "f1": 0.4656,
+    "roc_auc": 0.4929,
     "confusion_matrix": [
       [
-        113,
-        52
+        51,
+        46
       ],
       [
-        106,
-        61
+        55,
+        44
       ]
     ],
-    "direction_accuracy_head": 0.5241
+    "strategy_total_return": -0.683618,
+    "strategy_sharpe": -0.210955,
+    "strategy_sortino": -0.20429,
+    "strategy_max_drawdown": 0.999876,
+    "strategy_hit_rate": 0.204082,
+    "direction_accuracy_head": 0.4847
   },
-  "direction_threshold": 0.5299999999999999,
+  "direction_threshold": 0.5599999999999999,
   "direction_bigmove": false,
-  "train_time_sec": 110.7,
+  "train_time_sec": 33.1,
   "model_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/RELIANCE.NS/model.keras",
   "scaler_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/RELIANCE.NS/scaler.pkl"
 }

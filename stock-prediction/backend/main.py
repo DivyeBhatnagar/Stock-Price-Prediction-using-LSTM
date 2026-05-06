@@ -133,21 +133,25 @@ def _load_config(ticker: str) -> dict:
 
 def _normalize(ticker: str) -> str:
     """Normalize ticker using data_pipeline helper."""
-    from data_pipeline import normalize_ticker
-    return normalize_ticker(ticker)
+    from data_pipeline import ensure_indian_ticker
+    try:
+        return ensure_indian_ticker(ticker)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _training_task(req: TrainRequest):
     """Runs in a background thread (not async) so it doesn't block the event loop."""
     import argparse
-    from data_pipeline import normalize_ticker, DEFAULT_START_DATE
-    ticker = normalize_ticker(req.ticker)
+    from data_pipeline import ensure_indian_ticker, DEFAULT_START_DATE
+    ticker = ensure_indian_ticker(req.ticker)
     training_status[ticker] = {
         "status": "running",
         "started_at": time.time(),
         "epochs_total": req.epochs,
         "epoch": 0,
     }
+    log.info(f"[{ticker}] Training started (epochs={req.epochs}, window={req.window}, horizon={req.horizon})")
 
     try:
         from train import train, PROGRESS_CALLBACK
@@ -159,6 +163,13 @@ def _training_task(req: TrainRequest):
                 "loss": float(logs.get("loss", 0.0)) if logs else None,
                 "val_loss": float(logs.get("val_loss", 0.0)) if logs else None,
             })
+            loss_val = training_status[ticker].get("loss")
+            val_loss_val = training_status[ticker].get("val_loss")
+            log.info(
+                f"[{ticker}] Epoch {epoch}/{total}"
+                + (f" loss={loss_val:.6f}" if loss_val is not None else "")
+                + (f" val_loss={val_loss_val:.6f}" if val_loss_val is not None else "")
+            )
 
         import train as train_module
         train_module.PROGRESS_CALLBACK = _progress
@@ -234,8 +245,8 @@ def get_stock_data(
     Bare Indian symbols are auto-converted (e.g. RELIANCE → RELIANCE.NS).
     """
     try:
-        from data_pipeline import fetch_stock_data, add_technical_indicators, load_raw_data, normalize_ticker, is_indian_ticker, get_currency, DEFAULT_START_DATE
-        ticker = normalize_ticker(ticker)
+        from data_pipeline import fetch_stock_data, add_technical_indicators, load_raw_data, is_indian_ticker, get_currency, DEFAULT_START_DATE
+        ticker = _normalize(ticker)
         if start is None:
             start = DEFAULT_START_DATE
 
@@ -343,7 +354,8 @@ def list_data_tickers():
     """List tickers that have local CSV data available."""
     pattern = os.path.join(DATA_DIR, "*.csv")
     tickers = [os.path.splitext(os.path.basename(p))[0] for p in glob.glob(pattern)]
-    return {"tickers": sorted(tickers)}
+    filtered = [t for t in tickers if (t.endswith(".NS") or t.endswith(".BO") or t.startswith("_IDX_"))]
+    return {"tickers": sorted(filtered)}
 
 
 # ── GET /api/predict/{ticker} ─────────────────
@@ -463,6 +475,9 @@ def india_tickers():
     """
     from data_pipeline import NIFTY50_STOCKS, INDIAN_INDICES
 
+    pattern = os.path.join(DATA_DIR, "*.csv")
+    local = {os.path.splitext(os.path.basename(p))[0] for p in glob.glob(pattern)}
+
     stocks = [
         {
             "symbol":   f"{bare}.NS",
@@ -472,6 +487,7 @@ def india_tickers():
             "exchange": "NSE",
         }
         for bare, info in NIFTY50_STOCKS.items()
+        if f"{bare}.NS" in local
     ]
 
     indices = [
@@ -481,6 +497,7 @@ def india_tickers():
             "description": info["description"],
         }
         for sym, info in INDIAN_INDICES.items()
+        if sym.replace("^", "_IDX_") in local
     ]
 
     return {
@@ -498,9 +515,9 @@ def market_info(ticker: str):
     """
     Return market metadata for a ticker: exchange, currency, trading hours.
     """
-    from data_pipeline import normalize_ticker, is_indian_ticker, get_currency, INDIAN_STOCKS, INDIAN_INDICES
+    from data_pipeline import is_indian_ticker, get_currency, INDIAN_STOCKS, INDIAN_INDICES
 
-    ticker = normalize_ticker(ticker)
+    ticker = _normalize(ticker)
     is_indian = is_indian_ticker(ticker)
     bare = ticker.replace(".NS", "").replace(".BO", "")
 
@@ -528,6 +545,95 @@ def market_info(ticker: str):
         info["timezone"]      = "America/New_York"
 
     return info
+
+
+# ── GET /api/market/metrics ──────────────────
+
+@app.get("/api/market/metrics", tags=["Indian Market"])
+def market_metrics():
+    """
+    Return live market snapshot metrics for the dashboard.
+    """
+    from data_pipeline import load_raw_data, fetch_stock_data, DEFAULT_START_DATE, NIFTY50_TICKERS
+
+    def _load_series(ticker: str):
+        try:
+            return load_raw_data(ticker, data_dir=DATA_DIR)
+        except FileNotFoundError:
+            return fetch_stock_data(ticker, start=DEFAULT_START_DATE, save_dir=DATA_DIR, incremental=False)
+
+    def _latest_change(df: pd.DataFrame):
+        if df is None or df.empty or len(df) < 2:
+            return None, None
+        df = df.sort_index()
+        last = float(df.iloc[-1]["Close"])
+        prev = float(df.iloc[-2]["Close"])
+        if prev == 0:
+            return last, 0.0
+        change = (last - prev) / prev * 100.0
+        return last, change
+
+    # NIFTY 50
+    nifty_df = _load_series("^NSEI")
+    nifty_last, nifty_change = _latest_change(nifty_df)
+
+    # SENSEX
+    sensex_df = _load_series("^BSESN")
+    sensex_last, sensex_change = _latest_change(sensex_df)
+
+    # Market breadth: count positive vs negative daily moves in NIFTY 50 universe
+    positive = 0
+    negative = 0
+    for ticker in NIFTY50_TICKERS:
+        try:
+            df = load_raw_data(ticker, data_dir=DATA_DIR)
+        except Exception:
+            continue
+        if df is None or df.empty or len(df) < 2:
+            continue
+        df = df.sort_index()
+        last = float(df.iloc[-1]["Close"])
+        prev = float(df.iloc[-2]["Close"])
+        if last >= prev:
+            positive += 1
+        else:
+            negative += 1
+
+    # Volatility: 20-day std of daily returns for NIFTY 50
+    volatility = None
+    if nifty_df is not None and len(nifty_df) >= 21:
+        returns = nifty_df["Close"].pct_change()
+        volatility = float(returns.rolling(20).std().iloc[-1] * 100.0)
+
+    def _fmt_value(value, decimals=0):
+        if value is None:
+            return "--"
+        return f"{value:,.{decimals}f}"
+
+    def _fmt_trend(value):
+        if value is None:
+            return "--"
+        sign = "+" if value >= 0 else ""
+        return f"{sign}{value:.2f}%"
+
+    vol_label = "--"
+    vol_trend = "Stable"
+    if volatility is not None:
+        vol_label = f"{volatility:.1f}"
+        vol_trend = "Rising" if volatility >= 20 else "Stable"
+
+    breadth_label = f"{positive} / {negative}" if (positive + negative) > 0 else "--"
+    breadth_trend = "Positive" if positive >= negative else "Negative"
+
+    return {
+        "as_of": (nifty_df.index.max().strftime("%Y-%m-%d") if nifty_df is not None and not nifty_df.empty else None),
+        "metrics": [
+            {"label": "NIFTY 50", "value": _fmt_value(nifty_last, 0), "trend": _fmt_trend(nifty_change)},
+            {"label": "Sensex", "value": _fmt_value(sensex_last, 0), "trend": _fmt_trend(sensex_change)},
+            {"label": "Market Breadth", "value": breadth_label, "trend": breadth_trend},
+            {"label": "Volatility", "value": vol_label, "trend": vol_trend},
+        ],
+    }
 
 
 # ─────────────────────────────────────────────

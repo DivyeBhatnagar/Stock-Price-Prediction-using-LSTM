@@ -25,7 +25,63 @@
       "refreshed": 2,
       "errors": [],
       "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-05-04T17:40:46.539992",
+      "duration_sec": 861.4,
+      "total": 5,
+      "refreshed": 5,
+      "errors": [],
+      "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-05-04T21:40:46.597468",
+      "duration_sec": 892.1,
+      "total": 5,
+      "refreshed": 5,
+      "errors": [],
+      "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-05-04T23:40:46.535939",
+      "duration_sec": 864.9,
+      "total": 5,
+      "refreshed": 5,
+      "errors": [],
+      "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-05-05T01:40:46.539727",
+      "duration_sec": 872.2,
+      "total": 5,
+      "refreshed": 5,
+      "errors": [],
+      "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-05-05T14:40:46.536882",
+      "duration_sec": 21806.1,
+      "total": 5,
+      "refreshed": 5,
+      "errors": [],
+      "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-05-05T22:40:46.551606",
+      "duration_sec": 839.5,
+      "total": 5,
+      "refreshed": 5,
+      "errors": [],
+      "trigger": "scheduled"
+    },
+    {
+      "timestamp": "2026-05-05T23:40:46.536465",
+      "duration_sec": 840.9,
+      "total": 5,
+      "refreshed": 5,
+      "errors": [],
+      "trigger": "scheduled"
     }
   ],
-  "saved_at": "2026-03-13T12:44:19.111309"
+  "saved_at": "2026-05-05T23:54:47.484077"
 }

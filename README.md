@@ -530,9 +530,8 @@ Created with ❤️ for Indian markets
 If you find this project helpful, please ⭐ it!
 
 </div>
-- **Indian stocks**: All prices shown in **₹ (INR)** with Indian numbering (lakhs/crores)
-- **US stocks**: Prices shown in **$ (USD)**
-- Automatic detection based on ticker suffix (.NS / .BO)
+- **Indian stocks only**: All prices shown in **₹ (INR)** with Indian numbering (lakhs/crores)
+- Ticker detection based on NSE/BSE suffix (.NS / .BO)
 
 ### Data Range
 - **20 years** of historical data downloaded by default (vs. the previous 10 years)
@@ -767,8 +766,8 @@ Dashboard available at: **http://localhost:5173**
 
 | Metric | Description                              | Good Value     |
 |--------|-------------------------------------------|----------------|
-| RMSE   | Root Mean Squared Error (₹ / $)           | < ₹50 / $5     |
-| MAE    | Mean Absolute Error (₹ / $)               | < ₹30 / $3     |
+| RMSE   | Root Mean Squared Error (₹)               | < ₹50          |
+| MAE    | Mean Absolute Error (₹)                   | < ₹30          |
 | MAPE   | Mean Absolute Percentage Error            | < 5%           |
 | R²     | Coefficient of Determination              | > 0.90         |
 | DA     | Directional Accuracy                      | > 55%          |
@@ -820,8 +819,6 @@ python train.py --ticker TCS.NS --epochs 80 --window 90
 # Train on NIFTY 50 index
 python train.py --ticker ^NSEI --epochs 120
 
-# Train on US stock (still works)
-python train.py --ticker AAPL --epochs 100
 ```
 
 ---

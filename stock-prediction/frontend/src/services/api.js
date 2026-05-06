@@ -15,16 +15,52 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function fetchDashboardData() {
   try {
-    const [tickersResponse, niftyResponse] = await Promise.all([
+    const today = new Date();
+    const tenYearsAgo = new Date(today);
+    tenYearsAgo.setFullYear(today.getFullYear() - 10);
+    const startDate = tenYearsAgo.toISOString().slice(0, 10);
+
+    const [tickersResponse, niftyResponse, metricsResponse] = await Promise.all([
       api.get("/tickers"),
-      api.get(`/stock/${encodeURIComponent("^NSEI")}`)
+      api.get(`/stock/${encodeURIComponent("^NSEI")}`, {
+        params: {
+          start: startDate,
+          indicators: false
+        }
+      }),
+      api.get("/market/metrics").catch(() => ({ data: null }))
     ]);
 
     const niftyRecords = niftyResponse.data?.data || [];
-    const lastFive = niftyRecords.slice(-5).map((entry) => ({
-      label: entry.date || entry.Date,
-      value: Number.parseFloat(entry.Close ?? entry["Adj Close"] ?? entry.close)
+    const parsed = niftyRecords
+      .map((entry) => {
+        const date = entry.date || entry.Date;
+        const value = Number.parseFloat(
+          entry.Close ?? entry["Adj Close"] ?? entry.close
+        );
+        return {
+          date,
+          value,
+          ts: date ? Date.parse(date) : NaN
+        };
+      })
+      .filter((item) => Number.isFinite(item.ts) && Number.isFinite(item.value))
+      .sort((a, b) => a.ts - b.ts);
+
+    const monthlyMap = new Map();
+    parsed.forEach((item) => {
+      const monthKey = item.date.slice(0, 7); // YYYY-MM
+      monthlyMap.set(monthKey, item); // keep latest entry per month
+    });
+
+    const tenYearSeries = Array.from(monthlyMap.values()).map((item) => ({
+      label: item.date,
+      value: item.value
     }));
+
+    const liveMetrics = metricsResponse.data?.metrics?.length
+      ? metricsResponse.data.metrics
+      : marketMetrics;
 
     if (tickersResponse.data?.tickers?.length) {
       const sliced = tickersResponse.data.tickers.slice(0, 4);
@@ -34,14 +70,14 @@ export async function fetchDashboardData() {
           ticker: ticker.replace(".NS", ""),
           name: ticker
         })),
-        marketMetrics,
-        overviewSeries: lastFive.length ? lastFive : overviewSeries
+        marketMetrics: liveMetrics,
+        overviewSeries: tenYearSeries.length ? tenYearSeries : overviewSeries
       };
     }
     return {
       topStocks,
-      marketMetrics,
-      overviewSeries: lastFive.length ? lastFive : overviewSeries
+      marketMetrics: liveMetrics,
+      overviewSeries: tenYearSeries.length ? tenYearSeries : overviewSeries
     };
   } catch (error) {
     await wait(300);
@@ -107,11 +143,6 @@ export async function fetchStockFull(ticker) {
   };
 }
 
-export async function fetchIndiaTickers() {
-  const response = await api.get("/india/tickers");
-  return response.data?.stocks || [];
-}
-
 export async function fetchLocalTickers() {
   const response = await api.get("/data/tickers");
   return response.data?.tickers || [];
@@ -144,18 +175,32 @@ export async function fetchPrediction(ticker) {
     const toNumber = (value) =>
       typeof value === "number" ? value : Number.parseFloat(value || 0);
 
-    const actualSlice = actualRecords.slice(-forecast.length);
+    const toDateKey = (value) => {
+      if (!value) return "";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
+      return parsed.toISOString().slice(0, 10);
+    };
 
-    const series = forecast.map((item, index) => ({
-      label: item.date,
-      predicted: item.price,
-      actual:
-        toNumber(
-          actualSlice[index]?.Close ??
-            actualSlice[index]?.["Adj Close"] ??
-            actualSlice[index]?.close
-        )
-    }));
+    const actualByDate = new Map(
+      actualRecords.map((record) => {
+        const date = toDateKey(record.date || record.Date);
+        const price = toNumber(
+          record.Close ?? record["Adj Close"] ?? record.close
+        );
+        return [date, price];
+      })
+    );
+
+    const series = forecast.map((item) => {
+      const dateKey = toDateKey(item.date);
+      const actual = actualByDate.has(dateKey) ? actualByDate.get(dateKey) : null;
+      return {
+        label: item.date,
+        predicted: item.price,
+        actual
+      };
+    });
 
     return {
       ticker: predictedResponse.data?.ticker || ticker,
@@ -171,5 +216,99 @@ export async function fetchPrediction(ticker) {
       confidence: 0.82,
       series: predictionSeries
     };
+  }
+}
+
+const rangeToStartDate = (range) => {
+  const now = new Date();
+  if (range.endsWith("D")) {
+    const days = Number.parseInt(range.replace("D", ""), 10);
+    const start = new Date(now);
+    start.setDate(now.getDate() - days);
+    return start.toISOString().slice(0, 10);
+  }
+  if (range.endsWith("Y")) {
+    const years = Number.parseInt(range.replace("Y", ""), 10);
+    const start = new Date(now.getFullYear() - years, now.getMonth(), now.getDate());
+    return start.toISOString().slice(0, 10);
+  }
+  if (range.endsWith("M")) {
+    const months = Number.parseInt(range.replace("M", ""), 10);
+    const start = new Date(now.getFullYear(), now.getMonth() - months, now.getDate());
+    return start.toISOString().slice(0, 10);
+  }
+  return undefined;
+};
+
+const downsampleMonthly = (records) => {
+  const parsed = records
+    .map((entry) => {
+      const date = entry.date || entry.Date;
+      const value = Number.parseFloat(
+        entry.Close ?? entry["Adj Close"] ?? entry.close
+      );
+      return {
+        date,
+        value,
+        ts: date ? Date.parse(date) : NaN
+      };
+    })
+    .filter((item) => Number.isFinite(item.ts) && Number.isFinite(item.value))
+    .sort((a, b) => a.ts - b.ts);
+
+  const monthlyMap = new Map();
+  parsed.forEach((item) => {
+    const monthKey = item.date.slice(0, 7); // YYYY-MM
+    monthlyMap.set(monthKey, item); // keep latest entry per month
+  });
+
+  return Array.from(monthlyMap.values()).map((item) => ({
+    label: item.date,
+    value: item.value
+  }));
+};
+
+export async function fetchPriceHistory(ticker, range = "1Y") {
+  try {
+    const startDate =
+      range === "1D" ? rangeToStartDate("10D") : rangeToStartDate(range);
+    const response = await api.get(`/stock/${encodeURIComponent(ticker)}`, {
+      params: {
+        start: startDate,
+        indicators: false
+      }
+    });
+
+    const records = response.data?.data || [];
+    let series = records.map((entry) => ({
+      label: entry.date || entry.Date,
+      value: Number.parseFloat(
+        entry.Close ?? entry["Adj Close"] ?? entry.close
+      )
+    }));
+
+    if (range === "1D" && series.length > 2) {
+      series = series.slice(-2);
+    }
+
+    const years = range.endsWith("Y")
+      ? Number.parseInt(range.replace("Y", ""), 10)
+      : 0;
+    if (years >= 5) {
+      series = downsampleMonthly(records);
+    }
+
+    const lastDate = records.length
+      ? records[records.length - 1].date || records[records.length - 1].Date
+      : null;
+
+    return {
+      ticker: response.data?.ticker || ticker,
+      series,
+      lastDate
+    };
+  } catch (error) {
+    await wait(300);
+    return { ticker, series: [], lastDate: null };
   }
 }

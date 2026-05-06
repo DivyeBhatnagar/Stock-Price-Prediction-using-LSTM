@@ -2,28 +2,111 @@
   "freshness": {
     "RELIANCE.NS": {
       "ticker": "RELIANCE.NS",
-      "last_updated": "2026-05-04T02:49:31.390346",
-      "latest_date": "2026-04-30",
-      "total_rows": 2467,
-      "gaps_filled": 0,
+      "last_updated": "2026-05-06T10:06:34.652968",
+      "latest_date": "2026-05-06",
+      "total_rows": 2470,
+      "gaps_filled": 4,
       "last_error": null,
       "consecutive_fails": 0,
-      "update_count": 5
+      "update_count": 23
     },
     "TCS.NS": {
       "ticker": "TCS.NS",
-      "last_updated": "2026-04-10T13:24:59.606830",
+      "last_updated": "2026-05-06T07:33:34.895915",
+      "latest_date": "2026-05-06",
+      "total_rows": 333,
+      "gaps_filled": 4,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 13
+    },
+    "TITAN.NS": {
+      "ticker": "TITAN.NS",
+      "last_updated": "2026-05-05T23:47:59.888653",
+      "latest_date": "2026-05-05",
+      "total_rows": 2507,
+      "gaps_filled": 5,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 7
+    },
+    "SBIN.NS": {
+      "ticker": "SBIN.NS",
+      "last_updated": "2026-05-06T07:35:59.398561",
+      "latest_date": "2026-05-06",
+      "total_rows": 2507,
+      "gaps_filled": 5,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 8
+    },
+    "HDFCBANK.NS": {
+      "ticker": "HDFCBANK.NS",
+      "last_updated": "2026-05-05T23:54:47.482589",
+      "latest_date": "2026-05-05",
+      "total_rows": 2507,
+      "gaps_filled": 4,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 7
+    },
+    "LTIM.NS": {
+      "ticker": "LTIM.NS",
+      "last_updated": "2026-05-06T02:11:01.519165",
       "latest_date": "2026-04-10",
-      "total_rows": 2491,
+      "total_rows": 2404,
       "gaps_filled": 0,
       "last_error": null,
       "consecutive_fails": 0,
-      "update_count": 4
+      "update_count": 1
+    },
+    "SUNPHARMA.NS": {
+      "ticker": "SUNPHARMA.NS",
+      "last_updated": "2026-05-06T02:58:10.241722",
+      "latest_date": "2026-05-04",
+      "total_rows": 2505,
+      "gaps_filled": 0,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 1
+    },
+    "BHARTIARTL.NS": {
+      "ticker": "BHARTIARTL.NS",
+      "last_updated": "2026-05-06T07:41:07.706766",
+      "latest_date": "2026-05-06",
+      "total_rows": 2508,
+      "gaps_filled": 0,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 2
+    },
+    "POWERGRID.NS": {
+      "ticker": "POWERGRID.NS",
+      "last_updated": "2026-05-06T07:19:55.232418",
+      "latest_date": "2026-05-05",
+      "total_rows": 2507,
+      "gaps_filled": 0,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 1
+    },
+    "TATASTEEL.NS": {
+      "ticker": "TATASTEEL.NS",
+      "last_updated": "2026-05-06T07:35:26.562411",
+      "latest_date": "2026-05-06",
+      "total_rows": 2509,
+      "gaps_filled": 0,
+      "last_error": null,
+      "consecutive_fails": 0,
+      "update_count": 1
     }
   },
   "watchlist": [
     "TCS.NS",
-    "RELIANCE.NS"
+    "RELIANCE.NS",
+    "TITAN.NS",
+    "SBIN.NS",
+    "HDFCBANK.NS"
   ],
-  "saved_at": "2026-05-04T02:49:31.390428"
+  "saved_at": "2026-05-06T10:06:34.653161"
 }

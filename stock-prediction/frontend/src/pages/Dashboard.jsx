@@ -111,8 +111,8 @@ export default function Dashboard() {
           <SkeletonChart />
         ) : (
           <ChartCard
-            title="NIFTY 50 Trend"
-            subtitle="Last 5 sessions"
+            title="NIFTY 50"
+            subtitle="Past 10 years (monthly close)"
             data={data.overviewSeries}
             lines={[{ dataKey: "value", color: "#007AFF" }]}
           />

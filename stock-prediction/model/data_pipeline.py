@@ -4,10 +4,10 @@ data_pipeline.py
 Handles all data acquisition, preprocessing, normalization, and
 time-series windowing for the LSTM stock-prediction system.
 
-Supports both US and **Indian stock market** tickers (NSE / BSE).
-  - NSE tickers use the `.NS` suffix  (e.g. RELIANCE.NS)
-  - BSE tickers use the `.BO` suffix  (e.g. RELIANCE.BO)
-  - Indian indices: ^NSEI (NIFTY 50), ^NSEBANK (BANK NIFTY), ^BSESN (SENSEX)
+Supports **Indian stock market** tickers (NSE / BSE) only.
+    - NSE tickers use the `.NS` suffix  (e.g. RELIANCE.NS)
+    - BSE tickers use the `.BO` suffix  (e.g. RELIANCE.BO)
+    - Indian indices: ^NSEI (NIFTY 50), ^NSEBANK (BANK NIFTY), ^BSESN (SENSEX)
 
 Author  : Stock-Prediction AI Pipeline
 Version : 2.0.0
@@ -114,7 +114,7 @@ def normalize_ticker(ticker: str) -> str:
     Rules:
       • Already has `.NS` / `.BO` suffix or `^` prefix → keep as-is
       • Known Indian bare symbol (e.g. "RELIANCE")     → append `.NS`
-      • Otherwise (e.g. "AAPL", "TSLA")                → keep as-is (US market)
+      • Otherwise                                     → not supported
     """
     t = ticker.strip().upper()
     # Already formatted
@@ -123,6 +123,14 @@ def normalize_ticker(ticker: str) -> str:
     # Known Indian stock
     if t in _INDIAN_BARE_SET:
         return f"{t}.NS"
+    raise ValueError(f"Only Indian tickers are supported: {ticker}")
+
+
+def ensure_indian_ticker(ticker: str) -> str:
+    """Normalize and validate ticker belongs to the Indian market."""
+    t = normalize_ticker(ticker)
+    if not is_indian_ticker(t):
+        raise ValueError(f"Only Indian tickers are supported: {ticker}")
     return t
 
 
@@ -428,6 +436,8 @@ def add_external_signals(df: pd.DataFrame, start: str = None) -> pd.DataFrame:
                 continue
             if isinstance(ext.columns, pd.MultiIndex):
                 ext.columns = ext.columns.get_level_values(0)
+            if getattr(ext.index, "tz", None) is not None:
+                ext.index = ext.index.tz_localize(None)
             ext = ext[["Close"]].rename(columns={"Close": f"{name}_Close"})
             ext = ext.reindex(df.index).ffill()
             df[f"{name}_Return"] = ext[f"{name}_Close"].pct_change().fillna(0.0)
@@ -437,7 +447,17 @@ def add_external_signals(df: pd.DataFrame, start: str = None) -> pd.DataFrame:
         except Exception as e:
             print(f"[DataPipeline] External signal '{tkr}' skipped: {e}")
 
-    df.dropna(inplace=True)
+    # Ensure external feature columns exist and do not introduce all-NaN rows.
+    for name in tickers.keys():
+        return_col = f"{name}_Return"
+        ratio_col = f"{name}_SMA20_Ratio"
+        if return_col not in df.columns:
+            df[return_col] = 0.0
+        if ratio_col not in df.columns:
+            df[ratio_col] = 0.0
+        df[return_col] = df[return_col].fillna(0.0)
+        df[ratio_col] = df[ratio_col].fillna(0.0)
+
     return df
 
 
@@ -679,10 +699,18 @@ def build_pipeline(
     if start_date is None:
         start_date = DEFAULT_START_DATE
 
-    # Step 1 – Fetch
-    # During training, prefer direct download/cache path to avoid long
-    # incremental gap-filling delays that can stall experiments.
-    df_raw = fetch_stock_data(ticker, start=start_date, incremental=False)
+    # Step 1 – Load local data if available; fall back to download
+    try:
+        df_raw = load_raw_data(ticker)
+        if start_date is not None:
+            df_raw = df_raw[df_raw.index >= start_date]
+        if df_raw.empty:
+            raise ValueError(f"No data returned for ticker '{ticker}'. Check the symbol or date range.")
+        print(f"[DataPipeline] Loaded local data for {ticker}: {len(df_raw)} rows")
+    except FileNotFoundError:
+        # During training, prefer direct download/cache path to avoid long
+        # incremental gap-filling delays that can stall experiments.
+        df_raw = fetch_stock_data(ticker, start=start_date, incremental=False)
 
     # Step 2 – Feature Engineering
     df_feat = add_technical_indicators(df_raw)
@@ -690,6 +718,14 @@ def build_pipeline(
     df_feat = add_rolling_stats(df_feat)
     df_feat = add_external_signals(df_feat, start=start_date)
     df_feat = clean_feature_frame(df_feat)
+
+    min_required = window_size + forecast_horizon + 1
+    if len(df_feat) < min_required:
+        raise ValueError(
+            f"Not enough data after feature engineering for {ticker}. "
+            f"Need at least {min_required} rows, got {len(df_feat)}. "
+            "Increase training history or reduce window/indicators."
+        )
 
     # Optional strict no-look-ahead mode: shift all model features by one bar.
     # Keep labels based on unshifted future log returns from original timeline.
@@ -729,6 +765,11 @@ def build_pipeline(
     # Always build a return target stream aligned with X to support
     # threshold tuning and trading-metric evaluation.
     X_all, y_returns_all = create_sequences(scaled, window_size, LOG_RETURN_COL_IDX, forecast_horizon)
+    if X_all.size == 0 or y_returns_all.size == 0:
+        raise ValueError(
+            f"Not enough sequences for {ticker} with window={window_size} and horizon={forecast_horizon}. "
+            "Increase training history or reduce window."
+        )
 
     if target_mode in ("direction", "direction_bigmove"):
         labels, indices, coverage = create_direction_labels(

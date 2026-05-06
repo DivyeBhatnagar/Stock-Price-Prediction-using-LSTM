@@ -54,7 +54,31 @@ kill_port_listeners() {
     echo "Freeing port $port (killing: $pids) …"
     # shellcheck disable=SC2086
     kill $pids >/dev/null 2>&1 || true
+    sleep 0.5
+    # If still listening, force kill.
+    if port_in_use "$port"; then
+      pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+      if [[ -n "$pids" ]]; then
+        echo "Force killing port $port listeners: $pids …"
+        # shellcheck disable=SC2086
+        kill -9 $pids >/dev/null 2>&1 || true
+      fi
+    fi
   fi
+}
+
+wait_for_port_release() {
+  local port="$1"
+  local retries="${2:-10}"
+  local i=0
+  while port_in_use "$port"; do
+    if [[ "$i" -ge "$retries" ]]; then
+      return 1
+    fi
+    sleep 0.3
+    i=$((i + 1))
+  done
+  return 0
 }
 
 venv_python() {
@@ -84,7 +108,7 @@ start_backend() {
   if port_in_use "$BACKEND_PORT"; then
     if [[ "${FORCE:-0}" == "1" ]]; then
       kill_port_listeners "$BACKEND_PORT"
-      sleep 0.5
+      wait_for_port_release "$BACKEND_PORT" 15 || true
     fi
   fi
   if port_in_use "$BACKEND_PORT"; then
@@ -101,7 +125,7 @@ start_backend() {
       --host 0.0.0.0 \
       --port "$BACKEND_PORT" \
       --reload-dir "$ROOT_DIR" \
-      >> "$BACKEND_LOG" 2>&1 &
+      2>&1 | tee -a "$BACKEND_LOG" &
     echo $! > "$BACKEND_PID_FILE"
   )
 }
@@ -121,7 +145,7 @@ start_frontend() {
   if port_in_use "$FRONTEND_PORT"; then
     if [[ "${FORCE:-0}" == "1" ]]; then
       kill_port_listeners "$FRONTEND_PORT"
-      sleep 0.5
+      wait_for_port_release "$FRONTEND_PORT" 15 || true
     fi
   fi
   if port_in_use "$FRONTEND_PORT"; then

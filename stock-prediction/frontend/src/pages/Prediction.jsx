@@ -6,11 +6,11 @@ import { SkeletonChart } from "../components/Skeleton.jsx";
 import { formatCurrency } from "../utils/formatters.js";
 import {
   fetchPrediction,
-  fetchIndiaTickers,
   fetchLocalTickers,
   trainModel,
   refreshTickerData,
-  fetchTrainingStatus
+  fetchTrainingStatus,
+  fetchPriceHistory
 } from "../services/api.js";
 
 export default function Prediction() {
@@ -23,6 +23,10 @@ export default function Prediction() {
   const [trainingStatus, setTrainingStatus] = useState(null);
   const [historyWindow, setHistoryWindow] = useState("5Y");
   const [epochs, setEpochs] = useState(60);
+  const [priceRange, setPriceRange] = useState("1Y");
+  const [priceSeries, setPriceSeries] = useState([]);
+  const [priceLoading, setPriceLoading] = useState(true);
+  const [priceLastDate, setPriceLastDate] = useState(null);
 
   const loadPrediction = async (symbol) => {
     try {
@@ -40,8 +44,8 @@ export default function Prediction() {
   const handleTrain = async () => {
     try {
       setTraining(true);
-      setTrainingStatus({ status: "running", epoch: 0, epochs_total: 0 });
-      await refreshTickerData(ticker);
+      setTrainingStatus({ status: "running", epoch: 0, epochs_total: epochs });
+      refreshTickerData(ticker).catch(() => null);
 
       const now = new Date();
       const years = Number.parseInt(historyWindow.replace("Y", ""), 10);
@@ -67,7 +71,7 @@ export default function Prediction() {
           }
         } catch (err) {
           if (err?.response?.status === 404) {
-            setTrainingStatus({ status: "running", epoch: 0, epochs_total: 0 });
+            setTrainingStatus({ status: "running", epoch: 0, epochs_total: epochs });
             return;
           }
           clearInterval(poll);
@@ -81,24 +85,36 @@ export default function Prediction() {
     }
   };
 
+  const loadPriceHistory = async (symbol, range) => {
+    try {
+      setPriceLoading(true);
+      const response = await fetchPriceHistory(symbol, range);
+      setPriceSeries(response.series || []);
+      setPriceLastDate(response.lastDate || null);
+    } catch (err) {
+      setPriceSeries([]);
+      setPriceLastDate(null);
+    } finally {
+      setPriceLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadPrediction(ticker);
     fetchLocalTickers()
       .then((tickers) => {
         if (tickers.length) {
           setAvailable(tickers.map((symbol) => ({ symbol, name: symbol })));
-        } else {
-          fetchIndiaTickers()
-            .then((stocks) => setAvailable(stocks))
-            .catch(() => setAvailable([]));
         }
       })
       .catch(() => {
-        fetchIndiaTickers()
-          .then((stocks) => setAvailable(stocks))
-          .catch(() => setAvailable([]));
+        setAvailable([]);
       });
   }, []);
+
+  useEffect(() => {
+    loadPriceHistory(ticker, priceRange);
+  }, [ticker, priceRange]);
 
   if (error) {
     return <ErrorState message={error} onRetry={() => loadPrediction(ticker)} />;
@@ -239,6 +255,46 @@ export default function Prediction() {
             { dataKey: "actual", color: "#111111" },
             { dataKey: "predicted", color: "#007AFF" }
           ]}
+        />
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-ink">Live Price</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { label: "1D", value: "1D" },
+            { label: "10Y", value: "10Y" },
+            { label: "5Y", value: "5Y" },
+            { label: "1Y", value: "1Y" },
+            { label: "1M", value: "1M" }
+          ].map((range) => (
+            <button
+              key={range.value}
+              onClick={() => setPriceRange(range.value)}
+              className={`rounded-full border px-3 py-1 text-xs transition ${
+                priceRange === range.value
+                  ? "border-ink bg-ink text-white"
+                  : "border-border bg-white text-ink hover:opacity-80"
+              }`}
+            >
+              {range.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {priceLoading ? (
+        <SkeletonChart />
+      ) : (
+        <ChartCard
+          title="Real Price"
+          subtitle={
+            priceLastDate
+              ? `Latest close: ${priceLastDate}`
+              : "Latest close"
+          }
+          data={priceSeries}
+          lines={[{ dataKey: "value", color: "#16A34A" }]}
         />
       )}
     </div>

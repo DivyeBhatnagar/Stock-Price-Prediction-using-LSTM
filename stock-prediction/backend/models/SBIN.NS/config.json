@@ -76,9 +76,9 @@
     "CRUDE_Return",
     "CRUDE_SMA20_Ratio"
   ],
-  "split_ratio": 0.85,
+  "split_ratio": 0.8,
   "val_ratio": 0.1,
-  "scale_method": "standard",
+  "scale_method": "minmax",
   "lstm_units": [
     256,
     128,
@@ -87,33 +87,45 @@
   "cnn": false,
   "walk_forward": false,
   "wf_splits": 3,
+  "wf_embargo": 5,
+  "wf_min_train": 300,
   "multi_task": true,
-  "epochs_trained": 26,
+  "threshold_objective": "sharpe",
+  "transaction_cost": 0.0005,
+  "allow_short": false,
+  "strict_no_lookahead": false,
+  "epochs_trained": 20,
   "metrics": {
-    "rmse": 12.6991,
-    "mae": 8.8146,
-    "mape": 0.9908,
-    "r2": 0.9909,
-    "directional_accuracy": 0.5181,
-    "directional_accuracy_regression": 0.4729,
-    "precision": 0.5181,
+    "rmse": 33.4016,
+    "mae": 23.7285,
+    "mape": 2.0094,
+    "r2": 0.8608,
+    "directional_accuracy": 0.4375,
+    "directional_accuracy_regression": 0.4375,
+    "precision": 0.4375,
     "recall": 1.0,
-    "f1": 0.6825,
+    "f1": 0.6087,
+    "roc_auc": 0.4145,
     "confusion_matrix": [
       [
         0,
-        160
+        27
       ],
       [
         0,
-        172
+        21
       ]
     ],
-    "direction_accuracy_head": 0.5181
+    "strategy_total_return": -0.992721,
+    "strategy_sharpe": -1.267137,
+    "strategy_sortino": -1.807036,
+    "strategy_max_drawdown": 0.999948,
+    "strategy_hit_rate": 0.4375,
+    "direction_accuracy_head": 0.4375
   },
-  "direction_threshold": 0.48,
+  "direction_threshold": 0.3,
   "direction_bigmove": false,
-  "train_time_sec": 101.2,
+  "train_time_sec": 12.9,
   "model_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/SBIN.NS/model.keras",
   "scaler_path": "/Users/divyebhatnagar/Desktop/Stock Market/stock-prediction/backend/models/SBIN.NS/scaler.pkl"
 }
